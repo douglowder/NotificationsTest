@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Text, View, Button, Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -13,24 +14,34 @@ Notifications.setNotificationHandler({
 
 export default function App() {
   const [expoPushToken, setExpoPushToken] = useState('');
-  const [notification, setNotification] = useState(false);
-  const notificationListener = useRef();
-  const responseListener = useRef();
+  const [notification, setNotification] = useState<
+    Notifications.Notification | undefined
+  >(undefined);
+  const notificationListener = useRef<Notifications.Subscription>();
+  const responseListener = useRef<Notifications.Subscription>();
 
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => setExpoPushToken(token));
+    registerForPushNotificationsAsync().then(
+      (token) => token && setExpoPushToken(token),
+    );
 
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      setNotification(notification);
-    });
+    notificationListener.current =
+      Notifications.addNotificationReceivedListener((notification) => {
+        setNotification(notification);
+      });
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log(response);
-    });
+    responseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log(response);
+      });
 
     return () => {
-      Notifications.removeNotificationSubscription(notificationListener.current);
-      Notifications.removeNotificationSubscription(responseListener.current);
+      notificationListener.current &&
+        Notifications.removeNotificationSubscription(
+          notificationListener.current,
+        );
+      responseListener.current &&
+        Notifications.removeNotificationSubscription(responseListener.current);
     };
   }, []);
 
@@ -40,12 +51,18 @@ export default function App() {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'space-around',
-      }}>
+      }}
+    >
       <Text>Your expo push token: {expoPushToken}</Text>
       <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <Text>Title: {notification && notification.request.content.title} </Text>
+        <Text>
+          Title: {notification && notification.request.content.title}{' '}
+        </Text>
         <Text>Body: {notification && notification.request.content.body}</Text>
-        <Text>Data: {notification && JSON.stringify(notification.request.content.data)}</Text>
+        <Text>
+          Data:{' '}
+          {notification && JSON.stringify(notification.request.content.data)}
+        </Text>
       </View>
       <Button
         title="Press to schedule a notification"
@@ -81,7 +98,8 @@ async function registerForPushNotificationsAsync() {
   }
 
   if (Device.isDevice) {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
@@ -93,7 +111,16 @@ async function registerForPushNotificationsAsync() {
     }
     // Learn more about projectId:
     // https://docs.expo.dev/push-notifications/push-notifications-setup/#configure-projectid
-    token = (await Notifications.getExpoPushTokenAsync({ projectId: 'your-project-id' })).data;
+    // Here we use EAS projectId
+    const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      throw new Error('Project ID not found');
+    }
+    token = (
+      await Notifications.getExpoPushTokenAsync({
+        projectId,
+      })
+    ).data;
     console.log(token);
   } else {
     alert('Must use physical device for Push Notifications');
