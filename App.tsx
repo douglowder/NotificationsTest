@@ -1,3 +1,10 @@
+/**
+ * Example code using expo-notifications package
+ *
+ * If this is added to a new Expo app, required packages should be installed:
+ *
+ * npx expo install expo-device expo-notifications
+ */
 import { useState, useEffect, useRef } from 'react';
 import { Text, View, Button, Platform } from 'react-native';
 import * as Device from 'expo-device';
