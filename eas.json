@@ -7,6 +7,11 @@
       "developmentClient": true,
       "extends": "production",
       "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug",
+        "withoutCredentials": true
+      },
       "ios": {
         "buildConfiguration": "Debug",
         "simulator": true
@@ -14,7 +19,6 @@
     },
     "development:device": {
       "extends": "development",
-      "distribution": "internal",
       "ios": {
         "buildConfiguration": "Debug",
         "simulator": false
@@ -23,6 +27,10 @@
     "preview": {
       "extends": "production",
       "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "withoutCredentials": true
+      },
       "ios": {
         "simulator": true
       }
