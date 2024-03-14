@@ -119,16 +119,22 @@ async function registerForPushNotificationsAsync() {
     // Learn more about projectId:
     // https://docs.expo.dev/push-notifications/push-notifications-setup/#configure-projectid
     // Here we use EAS projectId
-    const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
-    if (!projectId) {
-      throw new Error('Project ID not found');
+    try {
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ??
+        Constants?.easConfig?.projectId;
+      if (!projectId) {
+        throw new Error('Project ID not found');
+      }
+      token = (
+        await Notifications.getExpoPushTokenAsync({
+          projectId,
+        })
+      ).data;
+      console.log(token);
+    } catch (e) {
+      token = `${e}`;
     }
-    token = (
-      await Notifications.getExpoPushTokenAsync({
-        projectId,
-      })
-    ).data;
-    console.log(token);
   } else {
     alert('Must use physical device for Push Notifications');
   }
