@@ -21,6 +21,9 @@ Notifications.setNotificationHandler({
 
 export default function App() {
   const [expoPushToken, setExpoPushToken] = useState('');
+  const [channels, setChannels] = useState<Notifications.NotificationChannel[]>(
+    [],
+  );
   const [notification, setNotification] = useState<
     Notifications.Notification | undefined
   >(undefined);
@@ -32,6 +35,11 @@ export default function App() {
       (token) => token && setExpoPushToken(token),
     );
 
+    if (Platform.OS === 'android') {
+      Notifications.getNotificationChannelsAsync().then((value) =>
+        setChannels(value ?? []),
+      );
+    }
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
         setNotification(notification);
@@ -61,6 +69,11 @@ export default function App() {
       }}
     >
       <Text>Your expo push token: {expoPushToken}</Text>
+      <Text>{`Channels: ${JSON.stringify(
+        channels.map((c) => c.id),
+        null,
+        2,
+      )}`}</Text>
       <View style={{ alignItems: 'center', justifyContent: 'center' }}>
         <Text>
           Title: {notification && notification.request.content.title}{' '}
@@ -86,7 +99,7 @@ async function schedulePushNotification() {
     content: {
       title: "You've got mail! 📬",
       body: 'Here is the notification body',
-      data: { data: 'goes here' },
+      data: { data: 'goes here', test: { test1: 'more data' } },
     },
     trigger: { seconds: 2 },
   });
