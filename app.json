@@ -15,6 +15,11 @@
       "**/*"
     ],
     "ios": {
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      },
       "supportsTablet": true,
       "bundleIdentifier": "com.douglowderexpo.NotificationsTest"
     },
