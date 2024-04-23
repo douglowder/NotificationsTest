@@ -43,14 +43,22 @@ export default function App() {
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
         setNotification(notification);
+        console.log(
+          `${Platform.OS} saw notification ${notification.request.content.title}`,
+        );
       });
 
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
-        console.log(response);
+        console.log(
+          `${Platform.OS} saw response for ${response.notification.request.content.title}`,
+        );
       });
 
+    console.log(`${Platform.OS} added listeners`);
+
     return () => {
+      console.log(`${Platform.OS} removed listeners`);
       notificationListener.current &&
         Notifications.removeNotificationSubscription(
           notificationListener.current,
