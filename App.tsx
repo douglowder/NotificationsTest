@@ -10,7 +10,6 @@ import { Text, View, Button, Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-import NotificationResponseComponent from './NotificationResponses';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -28,38 +27,44 @@ export default function App() {
   const [notification, setNotification] = useState<
     Notifications.Notification | undefined
   >(undefined);
-  const [responseNotification, setResponseNotification] = useState<
-    Notifications.Notification | undefined
-  >(undefined);
-
-  const listener = useRef<Notifications.Subscription>();
+  const notificationListener = useRef<Notifications.Subscription>();
+  const responseListener = useRef<Notifications.Subscription>();
 
   useEffect(() => {
     registerForPushNotificationsAsync().then(
       (token) => token && setExpoPushToken(token),
     );
+
     if (Platform.OS === 'android') {
       Notifications.getNotificationChannelsAsync().then((value) =>
         setChannels(value ?? []),
       );
     }
-  }, []);
-
-  useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener(
-      (notification) => {
+    notificationListener.current =
+      Notifications.addNotificationReceivedListener((notification) => {
         setNotification(notification);
         console.log(
           `${Platform.OS} saw notification ${notification.request.content.title}`,
         );
-      },
-    );
-    listener.current = subscription;
-    console.log(`${Platform.OS} added notification listener`);
+      });
+
+    responseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log(
+          `${Platform.OS} saw response for ${response.notification.request.content.title}`,
+        );
+      });
+
+    console.log(`${Platform.OS} added listeners`);
 
     return () => {
-      console.log(`${Platform.OS} removed notification listener`);
-      listener.current && listener.current.remove();
+      console.log(`${Platform.OS} removed listeners`);
+      notificationListener.current &&
+        Notifications.removeNotificationSubscription(
+          notificationListener.current,
+        );
+      responseListener.current &&
+        Notifications.removeNotificationSubscription(responseListener.current);
     };
   }, []);
 
@@ -86,18 +91,12 @@ export default function App() {
           Data:{' '}
           {notification && JSON.stringify(notification.request.content.data)}
         </Text>
-        <Text>
-          Response: {responseNotification?.request?.content?.title || ''}
-        </Text>
       </View>
       <Button
         title="Press to schedule a notification"
         onPress={async () => {
           await schedulePushNotification();
         }}
-      />
-      <NotificationResponseComponent
-        onResponse={(notification) => setResponseNotification(notification)}
       />
     </View>
   );
