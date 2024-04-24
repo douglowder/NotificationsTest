@@ -3,9 +3,9 @@
     "name": "NotificationsTest",
     "slug": "NotificationsTest",
     "version": "1.0.0",
+    "runtimeVersion": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -29,6 +29,12 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.douglowderexpo.NotificationsTest"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/4cb6edb1-c16b-43bd-92cd-32dc4be40de3",
+      "requestHeaders": {
+        "expo-channel-name": "main"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
