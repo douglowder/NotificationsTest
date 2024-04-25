@@ -1,0 +1,65 @@
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationsService.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationsService.kt
+index c957a9e..ee94cc1 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationsService.kt
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationsService.kt
+@@ -434,6 +434,7 @@ open class NotificationsService : BroadcastReceiver() {
+      * @return [PendingIntent] triggering [NotificationsService], triggering "response received" event
+      */
+     fun createNotificationResponseIntent(context: Context, notification: Notification, action: NotificationAction): PendingIntent {
++      Log.i("DougNotificationsTest", "NotificationsService.createNotificationResponseIntent ${notification.notificationRequest.content.title}")
+       val intent = Intent(
+         NOTIFICATION_EVENT_ACTION,
+         getUriBuilder()
+@@ -500,6 +501,7 @@ open class NotificationsService : BroadcastReceiver() {
+ 
+     fun getNotificationResponseFromBroadcastIntent(intent: Intent): NotificationResponse {
+       val notification = intent.getParcelableExtra<Notification>(NOTIFICATION_KEY) ?: throw IllegalArgumentException("$NOTIFICATION_KEY not found in the intent extras.")
++      Log.i("DougNotificationsTest", "NotificationsService.getNotificationResponseFromBroadcastIntent ${notification.notificationRequest.content.title}")
+       val action = intent.getParcelableExtra<NotificationAction>(NOTIFICATION_ACTION_KEY) ?: throw IllegalArgumentException("$NOTIFICATION_ACTION_KEY not found in the intent extras.")
+       val response = if (action is TextInputNotificationAction) {
+         val userText = action.placeholder ?: RemoteInput.getResultsFromIntent(intent)?.getString(USER_TEXT_RESPONSE_KEY) ?: ""
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/ExpoHandlingDelegate.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/ExpoHandlingDelegate.kt
+index 4843fed..4d0fc53 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/ExpoHandlingDelegate.kt
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/ExpoHandlingDelegate.kt
+@@ -106,6 +106,8 @@ class ExpoHandlingDelegate(protected val context: Context) : HandlingDelegate {
+   fun getListeners() = sListenersReferences.values.mapNotNull { it.get() }
+ 
+   override fun handleNotification(notification: Notification) {
++    Log.i("DougNotificationsTest", "ExpoHandlingDelegate.handleNotification ${notification.notificationRequest.content.title}");
++
+     if (isAppInForeground()) {
+       getListeners().forEach {
+         it.onNotificationReceived(notification)
+@@ -125,6 +127,7 @@ class ExpoHandlingDelegate(protected val context: Context) : HandlingDelegate {
+   }
+ 
+   override fun handleNotificationResponse(notificationResponse: NotificationResponse) {
++    Log.i("DougNotificationsTest", "ExpoHandlingDelegate.handleNotificationResponse ${notificationResponse.notification.notificationRequest.content.title}");
+     if (notificationResponse.action.opensAppToForeground()) {
+       openAppToForeground(context, notificationResponse)
+     }
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/FirebaseMessagingDelegate.kt b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/FirebaseMessagingDelegate.kt
+index 55b3a8d..301af41 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/FirebaseMessagingDelegate.kt
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/delegates/FirebaseMessagingDelegate.kt
+@@ -1,6 +1,7 @@
+ package expo.modules.notifications.service.delegates
+ 
+ import android.content.Context
++import android.util.Log
+ import com.google.firebase.messaging.RemoteMessage
+ import expo.modules.notifications.notifications.JSONNotificationContentBuilder
+ import expo.modules.notifications.notifications.RemoteMessageSerializer
+@@ -89,6 +90,11 @@ open class FirebaseMessagingDelegate(protected val context: Context) : FirebaseM
+   fun getBackgroundTasks() = sBackgroundTaskConsumerReferences.values.mapNotNull { it.get() }
+ 
+   override fun onMessageReceived(remoteMessage: RemoteMessage) {
++    val notificationString = when (remoteMessage.notification) {
++      null -> ""
++      else -> remoteMessage.notification!!.title
++    }
++    Log.i("DougNotificationsTest", "FirebaseMessagingDelegate.onMessageReceived $notificationString")
+     NotificationsService.receive(context, createNotification(remoteMessage))
+     getBackgroundTasks().forEach {
+       it.scheduleJob(RemoteMessageSerializer.toBundle(remoteMessage))
