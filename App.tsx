@@ -27,6 +27,10 @@ export default function App() {
   const [notification, setNotification] = useState<
     Notifications.Notification | undefined
   >(undefined);
+  const [response, setResponse] = useState<
+    Notifications.NotificationResponse | undefined
+  >(undefined);
+
   const notificationListener = useRef<Notifications.Subscription>();
   const responseListener = useRef<Notifications.Subscription>();
 
@@ -50,6 +54,7 @@ export default function App() {
 
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
+        setResponse(response);
         console.log(
           `${Platform.OS} saw response for ${response.notification.request.content.title}`,
         );
@@ -90,6 +95,10 @@ export default function App() {
         <Text>
           Data:{' '}
           {notification && JSON.stringify(notification.request.content.data)}
+        </Text>
+        <Text>
+          Response received for:{' '}
+          {response && response.notification.request.content.title}
         </Text>
       </View>
       <Button
