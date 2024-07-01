@@ -1,0 +1,63 @@
+diff --git a/node_modules/expo-notifications/expo-module.config.json b/node_modules/expo-notifications/expo-module.config.json
+index 2c76073..78dc0e6 100644
+--- a/node_modules/expo-notifications/expo-module.config.json
++++ b/node_modules/expo-notifications/expo-module.config.json
+@@ -1,6 +1,11 @@
+ {
+   "name": "expo-notifications",
+   "platforms": ["ios", "android"],
++  "ios": {
++    "modules": [
++      "ExpoNotificationsHandlerModule"
++    ]
++  },
+   "android": {
+     "modules": [
+       "expo.modules.notifications.badge.BadgeModule",
+diff --git a/node_modules/expo-notifications/ios/EXNotifications.podspec b/node_modules/expo-notifications/ios/EXNotifications.podspec
+index 2315d8c..fda021f 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications.podspec
++++ b/node_modules/expo-notifications/ios/EXNotifications.podspec
+@@ -11,17 +11,24 @@ Pod::Spec.new do |s|
+   s.author         = package['author']
+   s.homepage       = package['homepage']
+   s.platform       = :ios, '13.4'
++  s.swift_version  = '5.4'
+   s.source         = { git: 'https://github.com/expo/expo.git' }
+   s.static_framework = true
+ 
+   s.dependency 'ExpoModulesCore'
+ 
++  # Swift/Objective-C compatibility
++  s.pod_target_xcconfig = {
++    'DEFINES_MODULE' => 'YES',
++    'SWIFT_COMPILATION_MODE' => 'wholemodule'
++  }
++
+   s.resource_bundles = {'ExpoNotifications_privacy' => ['PrivacyInfo.xcprivacy']}
+ 
+   if !$ExpoUseSources&.include?(package['name']) && ENV['EXPO_USE_SOURCE'].to_i == 0 && File.exist?("#{s.name}.xcframework") && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.10.0')
+     s.source_files = "#{s.name}/**/*.h"
+     s.vendored_frameworks = "#{s.name}.xcframework"
+   else
+-    s.source_files = "#{s.name}/**/*.{h,m}"
++    s.source_files = "#{s.name}/**/*.{h,m,swift}"
+   end
+ end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/ExpoNotificationsHandlerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/ExpoNotificationsHandlerModule.swift
+new file mode 100644
+index 0000000..d996898
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/ExpoNotificationsHandlerModule.swift
+@@ -0,0 +1,11 @@
++// Copyright 2018-present 650 Industries. All rights reserved.
++import ExpoModulesCore
++
++public class ExpoNotificationsHandlerModule: Module {
++  public func definition() -> ModuleDefinition {
++    Name("ExpoNotificationsHandlerModule")
++    
++    Constants {
++    }
++  }
++}
