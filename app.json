@@ -13,6 +13,9 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "infoPlist": {
+        "UIBackgroundModes": ["processing", "fetch", "remote-notification"]
+      },
       "supportsTablet": true
     },
     "android": {
