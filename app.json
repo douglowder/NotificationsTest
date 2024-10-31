@@ -26,6 +26,9 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
+      },
+      "splash": {
+        "image": "./assets/images/splash.png"
       }
     },
     "web": {
@@ -34,8 +37,21 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1",
+            "newArchEnabled": true
+          },
+          "android": {
+            "minSdkVersion": 25,
+            "newArchEnabled": true
+          }
+        }
+      ],
       "expo-router",
-      "expo-build-properties"
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
