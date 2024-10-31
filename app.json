@@ -17,10 +17,14 @@
         "UIBackgroundModes": [
           "processing",
           "fetch",
+          "remote-notification",
+          "processing",
+          "fetch",
           "remote-notification"
         ]
       },
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.douglowderexpo.NotificationsTest"
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +33,8 @@
       },
       "splash": {
         "image": "./assets/images/splash.png"
-      }
+      },
+      "package": "com.douglowderexpo.NotificationsTest"
     },
     "web": {
       "bundler": "metro",
@@ -55,6 +60,12 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4cb6edb1-c16b-43bd-92cd-32dc4be40de3"
+      }
+    },
+    "owner": "douglowderexpo"
   }
 }
