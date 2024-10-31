@@ -7,6 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
@@ -23,6 +24,7 @@
           "remote-notification"
         ]
       },
+      "appleTeamId": "P83ZV6W49Z",
       "supportsTablet": true,
       "bundleIdentifier": "com.douglowderexpo.NotificationsTest"
     },
@@ -43,19 +45,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "deploymentTarget": "15.1",
-            "newArchEnabled": true
-          },
-          "android": {
-            "minSdkVersion": 25,
-            "newArchEnabled": true
-          }
-        }
-      ],
+      "expo-build-properties",
       "expo-router",
       "expo-font"
     ],
