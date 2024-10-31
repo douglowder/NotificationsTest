@@ -5,6 +5,11 @@
   },
   "build": {
     "development": {
+      "android": {
+        "buildType": "apk",
+        "withoutCredentials": true,
+        "gradleCommand": ":app:assembleDebug"
+      },
       "developmentClient": true,
       "distribution": "internal"
     },
