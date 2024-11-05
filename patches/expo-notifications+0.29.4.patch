@@ -1,8 +1,23 @@
+diff --git a/node_modules/expo-notifications/expo-module.config.json b/node_modules/expo-notifications/expo-module.config.json
+index 2c76073..de403d4 100644
+--- a/node_modules/expo-notifications/expo-module.config.json
++++ b/node_modules/expo-notifications/expo-module.config.json
+@@ -1,6 +1,10 @@
+ {
+   "name": "expo-notifications",
+   "platforms": ["ios", "android"],
++  "ios": {
++    "modules": ["BadgeModule", "ServerRegistrationModule", "PushTokenModule"],
++    "appDelegateSubscribers": ["PushTokenAppDelegateSubscriber"]
++  },
+   "android": {
+     "modules": [
+       "expo.modules.notifications.badge.BadgeModule",
 diff --git a/node_modules/expo-notifications/ios/EXNotifications.podspec b/node_modules/expo-notifications/ios/EXNotifications.podspec
-index 2315d8c..f2d675b 100644
+index 9eb5769..6566237 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications.podspec
 +++ b/node_modules/expo-notifications/ios/EXNotifications.podspec
-@@ -16,12 +16,18 @@ Pod::Spec.new do |s|
+@@ -18,12 +18,18 @@ Pod::Spec.new do |s|
  
    s.dependency 'ExpoModulesCore'
  
@@ -24,10 +39,10 @@ index 2315d8c..f2d675b 100644
  end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Badge/BadgeModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Badge/BadgeModule.swift
 new file mode 100644
-index 0000000..f9a33d4
+index 0000000..3f4c843
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Badge/BadgeModule.swift
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,27 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -43,14 +58,15 @@ index 0000000..f9a33d4
 +    }
 +
 +    AsyncFunction("setBadgeCountAsync") { (badgeCount: Int) -> Bool in
-+      var result = false
-+      UNUserNotificationCenter.current().getNotificationSettings { settings in
-+        if settings.badgeSetting == .enabled {
++      let settings = await UNUserNotificationCenter.current().notificationSettings()
++
++      if settings.badgeSetting == .enabled {
++        Task { @MainActor in
 +          EXSharedApplication().applicationIconBadgeNumber = badgeCount
-+          result = true
 +        }
++        return true
 +      }
-+      return result
++      return false
 +    }
 +  }
 +}
@@ -339,15 +355,408 @@ index 83e10fc..0000000
 -}
 -
 -@end
-diff --git a/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift b/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenListener.h b/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenListener.h
+deleted file mode 100644
+index a5102aa..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenListener.h
++++ /dev/null
+@@ -1,14 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <Foundation/Foundation.h>
+-
+-NS_ASSUME_NONNULL_BEGIN
+-
+-@protocol EXPushTokenListener
+-
+-- (void)onDidRegisterWithDeviceToken:(NSData *)token;
+-- (void)onDidFailToRegisterWithError:(NSError *)error;
+-
+-@end
+-
+-NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenManager.h b/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenManager.h
+deleted file mode 100644
+index dbf7394..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenManager.h
++++ /dev/null
+@@ -1,24 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <Foundation/Foundation.h>
+-#import <UIKit/UIKit.h>
+-#import <ExpoModulesCore/EXSingletonModule.h>
+-#import <EXNotifications/EXPushTokenListener.h>
+-
+-NS_ASSUME_NONNULL_BEGIN
+-
+-@protocol EXPushTokenManager
+-
+-- (void)addListener:(id<EXPushTokenListener>)listener;
+-- (void)removeListener:(id<EXPushTokenListener>)listener;
+-
+-@end
+-
+-@interface EXPushTokenManager : EXSingletonModule <UIApplicationDelegate, EXPushTokenManager>
+-
+-- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken;
+-- (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error;
+-
+-@end
+-
+-NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenManager.m b/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenManager.m
+deleted file mode 100644
+index 700e373..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenManager.m
++++ /dev/null
+@@ -1,63 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXPushTokenManager.h>
+-#import <ExpoModulesCore/EXDefines.h>
+-
+-@interface EXPushTokenManager ()
+-
+-@property (nonatomic, strong) NSPointerArray *listeners;
+-
+-@end
+-
+-@implementation EXPushTokenManager
+-
+-EX_REGISTER_SINGLETON_MODULE(PushTokenManager);
+-
+-- (instancetype)init
+-{
+-  if (self = [super init]) {
+-    _listeners = [NSPointerArray weakObjectsPointerArray];
+-  }
+-  return self;
+-}
+-
+-# pragma mark - UIApplicationDelegate
+-
+-- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
+-{
+-  for (int i = 0; i < _listeners.count; i++) {
+-    id pointer = [_listeners pointerAtIndex:i];
+-    [pointer onDidRegisterWithDeviceToken:deviceToken];
+-  }
+-}
+-
+-- (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error
+-{
+-  for (int i = 0; i < _listeners.count; i++) {
+-    id pointer = [_listeners pointerAtIndex:i];
+-    [pointer onDidFailToRegisterWithError:error];
+-  }
+-}
+-
+-# pragma mark - Listeners
+-
+-- (void)addListener:(id<EXPushTokenListener>)listener
+-{
+-  [_listeners addPointer:(__bridge void * _Nullable)(listener)];
+-}
+-
+-- (void)removeListener:(id<EXPushTokenListener>)listener
+-{
+-  for (int i = 0; i < _listeners.count; i++) {
+-    id pointer = [_listeners pointerAtIndex:i];
+-    if (pointer == (__bridge void * _Nullable)(listener) || !pointer) {
+-      [_listeners removePointerAtIndex:i];
+-      i--;
+-    }
+-  }
+-  // compact doesn't work, that's why we need the `|| !pointer` above
+-  // http://www.openradar.me/15396578
+-  [_listeners compact];
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenModule.h b/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenModule.h
+deleted file mode 100644
+index 93d55dc..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenModule.h
++++ /dev/null
+@@ -1,9 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXExportedModule.h>
+-#import <ExpoModulesCore/EXEventEmitter.h>
+-#import <ExpoModulesCore/EXModuleRegistryConsumer.h>
+-#import <EXNotifications/EXPushTokenListener.h>
+-
+-@interface EXPushTokenModule : EXExportedModule <EXEventEmitter, EXModuleRegistryConsumer, EXPushTokenListener>
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenModule.m b/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenModule.m
+deleted file mode 100644
+index ecedf7a..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenModule.m
++++ /dev/null
+@@ -1,154 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXPushTokenModule.h>
+-#import <EXNotifications/EXPushTokenManager.h>
+-
+-#import <ExpoModulesCore/EXEventEmitterService.h>
+-
+-static NSString * const onDevicePushTokenEventName = @"onDevicePushToken";
+-
+-@interface EXPushTokenModule ()
+-
+-@property (nonatomic, weak) id<EXPushTokenManager> pushTokenManager;
+-
+-@property (nonatomic, assign) BOOL isListening;
+-@property (nonatomic, assign) BOOL isBeingObserved;
+-@property (nonatomic, assign) BOOL isSettlingPromise;
+-
+-@property (nonatomic, weak) id<EXEventEmitterService> eventEmitter;
+-
+-@property (nonatomic, strong) EXPromiseResolveBlock getDevicePushTokenResolver;
+-@property (nonatomic, strong) EXPromiseRejectBlock getDevicePushTokenRejecter;
+-
+-@end
+-
+-@implementation EXPushTokenModule
+-
+-EX_EXPORT_MODULE(ExpoPushTokenManager);
+-
+-# pragma mark - Exported methods
+-
+-EX_EXPORT_METHOD_AS(getDevicePushTokenAsync,
+-                    getDevicePushTokenResolving:(EXPromiseResolveBlock)resolve rejecting:(EXPromiseRejectBlock)reject)
+-{
+-  if (_getDevicePushTokenRejecter) {
+-    reject(@"E_AWAIT_PROMISE", @"Another async call to this method is in progress. Await the first Promise.", nil);
+-    return;
+-  }
+-
+-  _getDevicePushTokenResolver = resolve;
+-  _getDevicePushTokenRejecter = reject;
+-  [self setIsSettlingPromise:YES];
+-
+-  dispatch_async(dispatch_get_main_queue(), ^{
+-    [[UIApplication sharedApplication] registerForRemoteNotifications];
+-  });
+-}
+-
+-EX_EXPORT_METHOD_AS(unregisterForNotificationsAsync,
+-        	    unregisterForNotificationsAsync:(EXPromiseResolveBlock)resolve reject:(EXPromiseRejectBlock)reject)
+-{
+-  [[UIApplication sharedApplication] unregisterForRemoteNotifications];
+-  resolve(nil);
+-}
+-
+-# pragma mark - EXModuleRegistryConsumer
+-
+-- (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry
+-{
+-  _eventEmitter = [moduleRegistry getModuleImplementingProtocol:@protocol(EXEventEmitterService)];
+-  _pushTokenManager = [moduleRegistry getSingletonModuleForName:@"PushTokenManager"];
+-}
+-
+-# pragma mark - EXEventEmitter
+-
+-- (NSArray<NSString *> *)supportedEvents
+-{
+-  return @[onDevicePushTokenEventName];
+-}
+-
+-- (void)startObserving
+-{
+-  [self setIsBeingObserved:YES];
+-}
+-
+-- (void)stopObserving
+-{
+-  [self setIsBeingObserved:NO];
+-}
+-
+-- (BOOL)shouldListen
+-{
+-  return _isBeingObserved || _isSettlingPromise;
+-}
+-
+-- (void)updateListeningState
+-{
+-  if ([self shouldListen] && !_isListening) {
+-    [_pushTokenManager addListener:self];
+-    _isListening = YES;
+-  } else if (![self shouldListen] && _isListening) {
+-    [_pushTokenManager removeListener:self];
+-    _isListening = NO;
+-  }
+-}
+-
+-# pragma mark - EXPushTokenListener
+-
+-- (void)onDidRegisterWithDeviceToken:(NSData *)devicePushToken
+-{
+-  NSMutableString *stringToken = [NSMutableString string];
+-  const char *bytes = [devicePushToken bytes];
+-  for (int i = 0; i < [devicePushToken length]; i++) {
+-    [stringToken appendFormat:@"%02.2hhx", bytes[i]];
+-  }
+-
+-  if (_getDevicePushTokenResolver) {
+-    _getDevicePushTokenResolver(stringToken);
+-    [self onGetDevicePushTokenPromiseSettled];
+-  }
+-
+-  if (_isBeingObserved) {
+-    [_eventEmitter sendEventWithName:onDevicePushTokenEventName
+-                                body:@{ @"devicePushToken": stringToken }];
+-  }
+-}
+-
+-- (void)onDidFailToRegisterWithError:(NSError *)error
+-{
+-  if (_getDevicePushTokenRejecter) {
+-    NSString *message = @"Notification registration failed: ";
+-
+-    // A common error, localizedDescription may not be helpful.
+-    if (error.code == 3000 && [NSCocoaErrorDomain isEqualToString:error.domain]) {
+-      message = [message stringByAppendingString:@"\"Push Notifications\" capability hasn't been added to the app in current environment: "];
+-    }
+-
+-    message = [message stringByAppendingFormat:@"%@", error.localizedDescription];
+-    _getDevicePushTokenRejecter(@"E_REGISTRATION_FAILED", message, error);
+-    [self onGetDevicePushTokenPromiseSettled];
+-  }
+-}
+-
+-- (void)onGetDevicePushTokenPromiseSettled
+-{
+-  _getDevicePushTokenResolver = nil;
+-  _getDevicePushTokenRejecter = nil;
+-  [self setIsSettlingPromise:NO];
+-}
+-
+-# pragma mark - Internal state
+-
+-- (void)setIsBeingObserved:(BOOL)isBeingObserved
+-{
+-  _isBeingObserved = isBeingObserved;
+-  [self updateListeningState];
+-}
+-
+-- (void)setIsSettlingPromise:(BOOL)isSettlingPromise
+-{
+-  _isSettlingPromise = isSettlingPromise;
+-  [self updateListeningState];
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
 new file mode 100644
-index 0000000..0e5d51f
+index 0000000..d1b97b5
 --- /dev/null
-+++ b/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift
-@@ -0,0 +1,166 @@
++++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
+@@ -0,0 +1,24 @@
++
++import ExpoModulesCore
++import Foundation
++
++public class PushTokenAppDelegateSubscriber: ExpoAppDelegateSubscriber {
++
++  public static let ExpoNotificationsRegistrationResultName = Notification.Name("ExpoNotificationsRegistrationResult")
++
++  public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
++    NotificationCenter.default.post(name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResultName, object: nil, userInfo: ["deviceToken": dataToString(deviceToken)])
++  }
++
++  public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
++    NotificationCenter.default.post(name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResultName, object: nil, userInfo: ["error": error])
++  }
++
++  private func dataToString(_ data: Data) -> String {
++    var result = ""
++    data.forEach { byte in
++      result += String(format:"%02.2hhx", byte)
++    }
++    return result
++  }
++}
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
+new file mode 100644
+index 0000000..6158696
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
+@@ -0,0 +1,65 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
-+// swiftlint:disable force_unwrapping
++import ExpoModulesCore
++import UIKit
++import MachO
++
++let onDevicePushTokenEventName = "onDevicePushToken"
++
++public class PushTokenModule: Module {
++
++  var promiseNotYetResolved: Promise? = nil
++
++  public func onNotificationFailure(error: any Error) {
++    if let promiseNotYetResolved = promiseNotYetResolved {
++      promiseNotYetResolved.reject(error)
++    }
++  }
++
++  @objc
++  public func onNotificationResult(notification: Notification) {
++    guard let promise = promiseNotYetResolved,
++          let userInfo = notification.userInfo else {
++      return
++    }
++    if let error = userInfo["error"] as? (any Error) {
++      promise.reject(error)
++      promiseNotYetResolved = nil
++      return
++    }
++    if let deviceToken = userInfo["deviceToken"] as? String {
++      promise.resolve(deviceToken)
++      self.sendEvent(onDevicePushTokenEventName, ["devicePushToken": deviceToken])
++      promiseNotYetResolved = nil
++    }
++  }
++
++  public func definition() -> ModuleDefinition {
++    Name("ExpoPushTokenManager")
++
++    Events([onDevicePushTokenEventName])
++
++    OnStartObserving {
++      NotificationCenter.default.addObserver(self, selector: #selector(onNotificationResult), name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResultName, object: nil)
++    }
++
++    OnStopObserving {
++      NotificationCenter.default.removeObserver(self)
++    }
++
++    AsyncFunction("getDevicePushTokenAsync") { (promise: Promise) in
++      Task { @MainActor in
++        if let promiseNotYetResolved = promiseNotYetResolved {
++          promise.reject("E_AWAIT_PROMISE", "Another async call to this method is in progress. Await the first Promise.")
++        }
++        promiseNotYetResolved = promise
++        UIApplication.shared.registerForRemoteNotifications()
++      }
++    }
++
++    AsyncFunction("unregisterForNotificationsAsync") { () in
++      UIApplication.shared.unregisterForRemoteNotifications()
++    }
++
++  }
++}
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift b/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift
+new file mode 100644
+index 0000000..ec1d562
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift
+@@ -0,0 +1,179 @@
++//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
 +import UIKit
@@ -421,13 +830,13 @@ index 0000000..0e5d51f
 +  private func installationIdGetQuery() -> CFDictionary {
 +    return installationIdSearchQueryMerging([
 +      kSecMatchLimit: kSecMatchLimitOne,
-+      kSecReturnData: kCFBooleanTrue!
++      kSecReturnData: CFTrue
 +    ])
 +  }
 +
 +  private func installationIdSetQuery(_ deviceInstallationUUID: String) -> CFDictionary {
 +    return installationIdSearchQueryMerging([
-+      kSecValueData: deviceInstallationUUID.data(using: .utf8)!,
++      kSecValueData: dataFromString(deviceInstallationUUID),
 +      kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 +    ])
 +  }
@@ -453,13 +862,13 @@ index 0000000..0e5d51f
 +  private func registrationGetQuery() -> CFDictionary {
 +    return registrationSearchQueryMerging([
 +      kSecMatchLimit: kSecMatchLimitOne,
-+      kSecReturnData: kCFBooleanTrue!
++      kSecReturnData: CFTrue
 +    ])
 +  }
 +
 +  private func registrationSetQuery(_ registration: String) -> CFDictionary {
 +    return registrationSearchQueryMerging([
-+      kSecValueData: registration.data(using: .utf8)!,
++      kSecValueData: dataFromString(registration),
 +      kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 +    ])
 +  }
@@ -467,7 +876,7 @@ index 0000000..0e5d51f
 +  // MARK: - Generic keychain methods
 +
 +  private func keychainSearchQueryFor(key: String, dictionaryToMerge: [AnyHashable: Any]) -> CFDictionary {
-+    let encodedKey: Data = key.data(using: .utf8)!
++    let encodedKey: Data = dataFromString(key)
 +    let bundleIdentifier = Bundle.main.bundleIdentifier ?? ""
 +    var query: [AnyHashable: Any] = [
 +      kSecClass: kSecClassGenericPassword,
@@ -494,20 +903,35 @@ index 0000000..0e5d51f
 +    if status == errSecItemNotFound {
 +      return nil
 +    }
-+  throw Exception(name: "ERR_NOTIFICATIONS_KEYCHAIN_ACCESS", description: "Keychain access failed, status = \(status)", code: "\(status)")
++    throw keychainException(status)
 +  }
 +
 +  private func storeStringWithQueries(search: CFDictionary, set: CFDictionary) throws {
 +    SecItemDelete(search)
 +    let status = SecItemAdd(set, nil)
 +    if status != errSecSuccess {
-+      throw Exception(name: "ERR_NOTIFICATIONS_KEYCHAIN_ACCESS", description: "Keychain access failed, status = \(status)", code: "\(status)")
++      throw keychainException(status)
 +    }
++  }
++
++  private func keychainException(_ status: OSStatus) -> Exception {
++    let statusString = SecCopyErrorMessageString(status, nil) as? String ?? "\(status)"
++    return Exception(name: "ERR_NOTIFICATIONS_KEYCHAIN_ACCESS", description: "Keychain access failed: \(statusString)", code: "\(status)")
++  }
++
++  private func dataFromString(_ input: String) -> Data {
++    if let data = input.data(using: .utf8) {
++      return data
++    }
++    // If the above fails, find the fastest encoding that can be used without loss,
++    // guaranteeing a non-null result, and a safe force-unwrapping
++    let fastEncoding = input.fastestEncoding
++    // swiftlint:disable:next force_unwrapping
++    return input.data(using: fastEncoding)!
 +  }
 +
 +  private let kEXDeviceInstallationUUIDKey = "EXDeviceInstallationUUIDKey"
 +  private let kEXDeviceInstallationUUIDLegacyKey = "EXDeviceInstallationUUIDKey"
 +  private let kEXRegistrationInfoKey = "EXNotificationRegistrationInfoKey"
++  private let CFTrue = true as CFBoolean
 +}
-+
-+// swiftlint:enable force_unwrapping
