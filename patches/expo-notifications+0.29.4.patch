@@ -651,40 +651,42 @@ index ecedf7a..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
 new file mode 100644
-index 0000000..d1b97b5
+index 0000000..d5f46dd
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
-@@ -0,0 +1,24 @@
-+
+@@ -0,0 +1,26 @@
 +import ExpoModulesCore
 +import Foundation
 +
 +public class PushTokenAppDelegateSubscriber: ExpoAppDelegateSubscriber {
-+
-+  public static let ExpoNotificationsRegistrationResultName = Notification.Name("ExpoNotificationsRegistrationResult")
++  public static let ExpoNotificationsRegistrationResult = Notification.Name("ExpoNotificationsRegistrationResult")
 +
 +  public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-+    NotificationCenter.default.post(name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResultName, object: nil, userInfo: ["deviceToken": dataToString(deviceToken)])
++    NotificationCenter.default.post(
++      name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResult,
++      object: nil,
++      userInfo: ["deviceToken": dataToString(deviceToken)]
++    )
 +  }
 +
 +  public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
-+    NotificationCenter.default.post(name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResultName, object: nil, userInfo: ["error": error])
++    NotificationCenter.default.post(
++      name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResult,
++      object: nil,
++      userInfo: ["error": error]
++    )
 +  }
 +
 +  private func dataToString(_ data: Data) -> String {
-+    var result = ""
-+    data.forEach { byte in
-+      result += String(format:"%02.2hhx", byte)
-+    }
-+    return result
++    return data.map { String(format: "%02hhx", $0) }.joined()
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
 new file mode 100644
-index 0000000..6158696
+index 0000000..95c4b7d
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,60 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -694,31 +696,21 @@ index 0000000..6158696
 +let onDevicePushTokenEventName = "onDevicePushToken"
 +
 +public class PushTokenModule: Module {
-+
-+  var promiseNotYetResolved: Promise? = nil
-+
-+  public func onNotificationFailure(error: any Error) {
-+    if let promiseNotYetResolved = promiseNotYetResolved {
-+      promiseNotYetResolved.reject(error)
-+    }
-+  }
++  var promiseNotYetResolved: Promise?
 +
 +  @objc
 +  public func onNotificationResult(notification: Notification) {
 +    guard let promise = promiseNotYetResolved,
-+          let userInfo = notification.userInfo else {
++      let userInfo = notification.userInfo else {
 +      return
 +    }
 +    if let error = userInfo["error"] as? (any Error) {
 +      promise.reject(error)
-+      promiseNotYetResolved = nil
-+      return
-+    }
-+    if let deviceToken = userInfo["deviceToken"] as? String {
++    } else if let deviceToken = userInfo["deviceToken"] as? String {
 +      promise.resolve(deviceToken)
 +      self.sendEvent(onDevicePushTokenEventName, ["devicePushToken": deviceToken])
-+      promiseNotYetResolved = nil
 +    }
++    promiseNotYetResolved = nil
 +  }
 +
 +  public func definition() -> ModuleDefinition {
@@ -727,10 +719,16 @@ index 0000000..6158696
 +    Events([onDevicePushTokenEventName])
 +
 +    OnStartObserving {
-+      NotificationCenter.default.addObserver(self, selector: #selector(onNotificationResult), name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResultName, object: nil)
++      NotificationCenter.default.addObserver(
++        self,
++        selector: #selector(onNotificationResult),
++        name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResult,
++        object: nil
++      )
 +    }
 +
 +    OnStopObserving {
++      // swiftlint:disable:next notification_center_detachment
 +      NotificationCenter.default.removeObserver(self)
 +    }
 +
@@ -747,7 +745,6 @@ index 0000000..6158696
 +    AsyncFunction("unregisterForNotificationsAsync") { () in
 +      UIApplication.shared.unregisterForRemoteNotifications()
 +    }
-+
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift b/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift
