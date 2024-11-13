@@ -683,10 +683,10 @@ index 0000000..d5f46dd
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
 new file mode 100644
-index 0000000..95c4b7d
+index 0000000..4f51043
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,62 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -699,18 +699,18 @@ index 0000000..95c4b7d
 +  var promiseNotYetResolved: Promise?
 +
 +  @objc
-+  public func onNotificationResult(notification: Notification) {
-+    guard let promise = promiseNotYetResolved,
-+      let userInfo = notification.userInfo else {
++  public func onExpoNotificationsRegistrationResult(notification: Notification) {
++    guard let userInfo = notification.userInfo else {
 +      return
 +    }
 +    if let error = userInfo["error"] as? (any Error) {
-+      promise.reject(error)
++      promiseNotYetResolved?.reject(error)
++      promiseNotYetResolved = nil
 +    } else if let deviceToken = userInfo["deviceToken"] as? String {
-+      promise.resolve(deviceToken)
++      promiseNotYetResolved?.resolve(deviceToken)
++      promiseNotYetResolved = nil
 +      self.sendEvent(onDevicePushTokenEventName, ["devicePushToken": deviceToken])
 +    }
-+    promiseNotYetResolved = nil
 +  }
 +
 +  public func definition() -> ModuleDefinition {
@@ -721,7 +721,7 @@ index 0000000..95c4b7d
 +    OnStartObserving {
 +      NotificationCenter.default.addObserver(
 +        self,
-+        selector: #selector(onNotificationResult),
++        selector: #selector(onExpoNotificationsRegistrationResult),
 +        name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResult,
 +        object: nil
 +      )
@@ -734,7 +734,7 @@ index 0000000..95c4b7d
 +
 +    AsyncFunction("getDevicePushTokenAsync") { (promise: Promise) in
 +      Task { @MainActor in
-+        if let promiseNotYetResolved = promiseNotYetResolved {
++        if promiseNotYetResolved != nil {
 +          promise.reject("E_AWAIT_PROMISE", "Another async call to this method is in progress. Await the first Promise.")
 +        }
 +        promiseNotYetResolved = promise
@@ -743,7 +743,9 @@ index 0000000..95c4b7d
 +    }
 +
 +    AsyncFunction("unregisterForNotificationsAsync") { () in
-+      UIApplication.shared.unregisterForRemoteNotifications()
++      Task { @MainActor in
++        UIApplication.shared.unregisterForRemoteNotifications()
++      }
 +    }
 +  }
 +}
