@@ -39,10 +39,10 @@ index 9eb5769..6566237 100644
  end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Badge/BadgeModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Badge/BadgeModule.swift
 new file mode 100644
-index 0000000..3f4c843
+index 0000000..62a5734
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Badge/BadgeModule.swift
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,28 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -56,6 +56,7 @@ index 0000000..3f4c843
 +    AsyncFunction("getBadgeCountAsync") { () -> Int in
 +      return EXSharedApplication().applicationIconBadgeNumber
 +    }
++    .runOnQueue(.main)
 +
 +    AsyncFunction("setBadgeCountAsync") { (badgeCount: Int) -> Bool in
 +      let settings = await UNUserNotificationCenter.current().notificationSettings()
@@ -68,6 +69,267 @@ index 0000000..3f4c843
 +      }
 +      return false
 +    }
++  }
++}
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Building/EXNotificationBuilder.h b/node_modules/expo-notifications/ios/EXNotifications/Building/EXNotificationBuilder.h
+deleted file mode 100644
+index 1089770..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Building/EXNotificationBuilder.h
++++ /dev/null
+@@ -1,19 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXInternalModule.h>
+-
+-#import <UserNotifications/UserNotifications.h>
+-
+-NS_ASSUME_NONNULL_BEGIN
+-
+-@protocol EXNotificationBuilder
+-
+-- (UNMutableNotificationContent *)notificationContentFromRequest:(NSDictionary *)request;
+-
+-@end
+-
+-@interface EXNotificationBuilder : NSObject <EXInternalModule, EXNotificationBuilder>
+-
+-@end
+-
+-NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Building/EXNotificationBuilder.m b/node_modules/expo-notifications/ios/EXNotifications/Building/EXNotificationBuilder.m
+deleted file mode 100644
+index 53ec405..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Building/EXNotificationBuilder.m
++++ /dev/null
+@@ -1,105 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXDefines.h>
+-#import <EXNotifications/EXNotificationBuilder.h>
+-#import <EXNotifications/NSDictionary+EXNotificationsVerifyingClass.h>
+-
+-@implementation EXNotificationBuilder
+-
+-EX_REGISTER_MODULE();
+-
+-+ (const NSArray<Protocol *> *)exportedInterfaces
+-{
+-  return @[@protocol(EXNotificationBuilder)];
+-}
+-
+-- (UNMutableNotificationContent *)notificationContentFromRequest:(NSDictionary *)request
+-{
+-  UNMutableNotificationContent *content = [UNMutableNotificationContent new];
+-  [content setTitle:[request objectForKey:@"title" verifyingClass:[NSString class]]];
+-  [content setSubtitle:[request objectForKey:@"subtitle" verifyingClass:[NSString class]]];
+-  [content setBody:[request objectForKey:@"body" verifyingClass:[NSString class]]];
+-  [content setLaunchImageName:[request objectForKey:@"launchImageName" verifyingClass:[NSString class]]];
+-  [content setBadge:[request objectForKey:@"badge" verifyingClass:[NSNumber class]]];
+-  [content setUserInfo:[request objectForKey:@"data" verifyingClass:[NSDictionary class]]];
+-  [content setCategoryIdentifier:[request objectForKey:@"categoryIdentifier" verifyingClass:[NSString class]]];
+-  if ([request[@"sound"] isKindOfClass:[NSNumber class]]) {
+-    [content setSound:[request[@"sound"] boolValue] ? [UNNotificationSound defaultSound] : nil];
+-  } else if ([request[@"sound"] isKindOfClass:[NSString class]]) {
+-    NSString *soundName = request[@"sound"];
+-    if ([@"default" isEqualToString:soundName]) {
+-      [content setSound:[UNNotificationSound defaultSound]];
+-    } else if ([@"defaultCritical" isEqualToString:soundName]) {
+-      [content setSound:[UNNotificationSound defaultCriticalSound]];
+-    } else {
+-      [content setSound:[UNNotificationSound soundNamed:soundName]];
+-    }
+-  }
+-  NSMutableArray<UNNotificationAttachment *> *attachments = [NSMutableArray new];
+-  [[request objectForKey:@"attachments" verifyingClass:[NSArray class]] enumerateObjectsUsingBlock:^(NSDictionary * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+-    UNNotificationAttachment *attachment = [self attachmentFromRequest:obj];
+-    if (attachment) {
+-      [attachments addObject:attachment];
+-    }
+-  }];
+-  [content setAttachments:attachments];
+-  NSString *interruptionLevel = [request objectForKey:@"interruptionLevel" verifyingClass:[NSString class]];
+-  if (interruptionLevel) {
+-    content.interruptionLevel = [EXNotificationBuilder deserializeInterruptionLevel:interruptionLevel];
+-  }
+-  return content;
+-}
+-
+-+ (UNNotificationInterruptionLevel)deserializeInterruptionLevel:(NSString *)interruptionLevel API_AVAILABLE(ios(15.0)) {
+-  static NSDictionary *interruptionLevelMap;
+-  if (!interruptionLevelMap) {
+-    interruptionLevelMap = @{
+-      @"passive": @(UNNotificationInterruptionLevelPassive),
+-      @"active": @(UNNotificationInterruptionLevelActive),
+-      @"timeSensitive": @(UNNotificationInterruptionLevelTimeSensitive),
+-      @"critical": @(UNNotificationInterruptionLevelCritical)
+-    };
+-  }
+-  
+-  return [interruptionLevelMap[interruptionLevel] integerValue];
+-}
+-
+-- (UNNotificationAttachment *)attachmentFromRequest:(NSDictionary *)request
+-{
+-  NSString *identifier = [request objectForKey:@"identifier" verifyingClass:[NSString class]] ?: @"";
+-  NSURL *uri = [NSURL URLWithString:[request objectForKey:@"uri" verifyingClass:[NSString class]]];
+-  NSError *error = nil;
+-  UNNotificationAttachment *attachment = [UNNotificationAttachment attachmentWithIdentifier:identifier URL:uri options:[self attachmentOptionsFromRequest:request] error:&error];
+-  if (error) {
+-    EXLogWarn(@"[expo-notifications] Could not have created a notification attachment out of request: %@. Error: %@.", [request description], [error description]);
+-    return nil;
+-  }
+-  return attachment;
+-}
+-
+-- (NSDictionary *)attachmentOptionsFromRequest:(NSDictionary *)request
+-{
+-  NSMutableDictionary *options = [NSMutableDictionary new];
+-  if ([request objectForKey:@"typeHint" verifyingClass:[NSString class]]) {
+-    options[UNNotificationAttachmentOptionsTypeHintKey] = request[@"typeHint"];
+-  }
+-  if ([request objectForKey:@"hideThumbnail" verifyingClass:[NSNumber class]]) {
+-    options[UNNotificationAttachmentOptionsThumbnailHiddenKey] = request[@"hideThumbnail"];
+-  }
+-  if ([request objectForKey:@"thumbnailClipArea" verifyingClass:[NSDictionary class]]) {
+-    NSDictionary *area = request[@"thumbnailClipArea"];
+-    NSNumber *x = [area objectForKey:@"x" verifyingClass:[NSNumber class]];
+-    NSNumber *y = [area objectForKey:@"y" verifyingClass:[NSNumber class]];
+-    NSNumber *width = [area objectForKey:@"width" verifyingClass:[NSNumber class]];
+-    NSNumber *height = [area objectForKey:@"height" verifyingClass:[NSNumber class]];
+-    CGRect areaRect = CGRectMake([x doubleValue], [y doubleValue], [width doubleValue], [height doubleValue]);
+-    options[UNNotificationAttachmentOptionsThumbnailClippingRectKey] = (__bridge id _Nullable)(CGRectCreateDictionaryRepresentation(areaRect));
+-  }
+-  if ([request objectForKey:@"thumbnailTime" verifyingClass:[NSNumber class]]) {
+-    options[UNNotificationAttachmentOptionsThumbnailTimeKey] = request[@"thumbnailTime"];
+-  }
+-  return options;
+-}
+-
+-@end
+-
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
+new file mode 100644
+index 0000000..eca0961
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
+@@ -0,0 +1,119 @@
++//  Copyright © 2024 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++
++@objc(EXNotificationBuilder)
++public class NotificationBuilder: NSObject {
++
++  @objc(notificationContentFromRequest:error:)
++  public func content(_ request: [AnyHashable: Any]) throws -> UNMutableNotificationContent {
++    let content = UNMutableNotificationContent()
++
++    if let title: String = try? property("title", type: String.self, from: request) as? String {
++      content.title = title
++    }
++
++    if let subtitle: String = try? property("subtitle", type: String.self, from: request) as? String {
++      content.subtitle = subtitle
++    }
++
++    if let body: String = try? property("body", type: String.self, from: request) as? String {
++      content.body = body
++    }
++
++    if let launchImageName: String = try? property("launchImageName", type: String.self, from: request) as? String {
++      content.launchImageName = launchImageName
++    }
++
++    if let badge: Int = try? property("badge", type: Int.self, from: request) as? Int {
++      content.badge = NSNumber(integerLiteral: badge)
++    }
++
++    if let userInfo: [AnyHashable: Any] = try? property("userInfo", type: [AnyHashable: Any].self, from: request) as? [AnyHashable: Any] {
++      content.userInfo = userInfo
++    }
++
++    if let categoryIdentifier: String = try? property("categoryIdentifier", type: String.self, from: request) as? String {
++      content.categoryIdentifier = categoryIdentifier
++    }
++
++    if let sound = request["sound"] as? NSNumber {
++      content.sound = sound.boolValue ? .default : .none
++    } else if let soundName = request["sound"] as? String {
++      if soundName == "default" {
++        content.sound = UNNotificationSound.default
++      } else if soundName == "defaultCritical" {
++        content.sound = UNNotificationSound.defaultCritical
++      } else {
++        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundName))
++      }
++    }
++    var attachments: [UNNotificationAttachment] = []
++    if let attachmentsArray = request["attachments"] as? [[String: Any]] {
++      for attachmentObject in attachmentsArray {
++        if let attachment: UNNotificationAttachment = attachment(attachmentObject) {
++          attachments.append(attachment)
++        }
++      }
++    }
++    content.attachments = attachments
++    if let interruptionLevel = request["interruptionLevel"] as? String {
++      content.interruptionLevel = deserializeInterruptionLevel(interruptionLevel)
++    }
++
++    return content
++  }
++
++  func attachment(_ request: [AnyHashable: Any]) -> UNNotificationAttachment? {
++    let identifier = request["identifier"] as? String ?? ""
++    let uri = request["uri"] as? String ?? ""
++    do {
++      if let attachment: UNNotificationAttachment = try? UNNotificationAttachment(identifier: identifier, url: URL(string: uri)!, options:attachmentOptions(request)) {
++        return attachment
++      }
++      return nil
++    }
++  }
++
++  func attachmentOptions(_ request: [AnyHashable: Any]) -> [AnyHashable: Any] {
++    var options: [AnyHashable: Any] = [:]
++    if let typeHint = request["typeHint"] as? String {
++      options[UNNotificationAttachmentOptionsTypeHintKey] = typeHint
++    }
++    if let hideThumbnail = request["hideThumbnail"] as? Bool {
++      options[UNNotificationAttachmentOptionsThumbnailHiddenKey] = hideThumbnail
++    }
++    if let thumbnailClipArea = request["thumbnailClipArea"] as? [String: Any] {
++      let x = thumbnailClipArea["x"] as? NSNumber
++      let y = thumbnailClipArea["y"] as? NSNumber
++      let width = thumbnailClipArea["width"] as? NSNumber
++      let height = thumbnailClipArea["height"] as? NSNumber
++      if let x, let y, let width, let height {
++        options[UNNotificationAttachmentOptionsThumbnailClippingRectKey] = CGRect(x: x.doubleValue, y: y.doubleValue, width: width.doubleValue, height: height.doubleValue)
++      }
++    }
++    if let thumbnailTime = request["thumbnailTime"] as? NSNumber {
++      options[UNNotificationAttachmentOptionsThumbnailTimeKey] = thumbnailTime
++    }
++    return options
++  }
++
++  func deserializeInterruptionLevel(_ interruptionLevel: String) -> UNNotificationInterruptionLevel {
++    switch interruptionLevel {
++    case "passive": return .passive
++    case "active": return .active
++    case "timeSensitive": return .timeSensitive
++    case "critical": return .critical
++    default: return .passive
++    }
++  }
++
++  func property<T>(_ key: String, type: T.Type, from request: [AnyHashable: Any]) throws -> Any? {
++    if request[key] == nil { return nil }
++    guard let value = request[key] as? T else {
++      let exceptionName = "Value under key \(key) is not a valid \(type)"
++      throw Exception(name: exceptionName, description: "")
++    }
++    return value
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/EXBadgeModule.h b/node_modules/expo-notifications/ios/EXNotifications/EXBadgeModule.h
@@ -355,6 +617,153 @@ index 83e10fc..0000000
 -}
 -
 -@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m
+index 8410fa4..9c67fad 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m
+@@ -2,17 +2,21 @@
+ 
+ #import <EXNotifications/EXNotificationPresentationModule.h>
+ 
+-#import <EXNotifications/EXNotificationBuilder.h>
+ #import <EXNotifications/EXNotificationSerializer.h>
+ #import <EXNotifications/EXNotificationCenterDelegate.h>
+ 
+-@interface EXNotificationPresentationModule ()
++#if __has_include(<EXNotifications/EXNotifications-Swift.h>)
++#import <EXNotifications/EXNotifications-Swift.h>
++#else
++#import "EXNotifications-Swift.h"
++#endif
+ 
+-@property (nonatomic, weak) id<EXNotificationBuilder> notificationBuilder;
++@interface EXNotificationPresentationModule ()
+ 
+ // Remove once presentNotificationAsync is removed
+ @property (nonatomic, strong) NSCountedSet<NSString *> *presentedNotifications;
+ @property (nonatomic, weak) id<EXNotificationCenterDelegate> notificationCenterDelegate;
++@property (nonatomic, strong) EXNotificationBuilder *builder;
+ 
+ @end
+ 
+@@ -25,6 +29,7 @@ EX_EXPORT_MODULE(ExpoNotificationPresenter);
+ {
+   if (self = [super init]) {
+     _presentedNotifications = [NSCountedSet set];
++    self.builder = [EXNotificationBuilder new];
+   }
+   return self;
+ }
+@@ -38,7 +43,12 @@ EX_EXPORT_METHOD_AS(presentNotificationAsync,
+                     resolve:(EXPromiseResolveBlock)resolve
+                     reject:(EXPromiseRejectBlock)reject)
+ {
+-  UNNotificationContent *content = [_notificationBuilder notificationContentFromRequest:notificationSpec];
++  NSError *error = nil;
++  UNNotificationContent *content = [self.builder notificationContentFromRequest:notificationSpec error:&error];
++  if (error) {
++    NSString *message = [NSString stringWithFormat:@"Notification could not have been presented: %@", error.description];
++    reject(@"ERR_NOTIF_PRESENT", message, error);
++  }
+   UNNotificationTrigger *trigger = nil;
+   UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:identifier content:content trigger:trigger];
+   [_presentedNotifications addObject:identifier];
+@@ -86,8 +96,6 @@ EX_EXPORT_METHOD_AS(dismissAllNotificationsAsync,
+ 
+ - (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry
+ {
+-  _notificationBuilder = [moduleRegistry getModuleImplementingProtocol:@protocol(EXNotificationBuilder)];
+-
+   // Remove once presentNotificationAsync is removed
+   id<EXNotificationCenterDelegate> notificationCenterDelegate = (id<EXNotificationCenterDelegate>)[moduleRegistry getSingletonModuleForName:@"NotificationCenterDelegate"];
+   [notificationCenterDelegate addDelegate:self];
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.h
+index a7fff4c..b005013 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.h
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.h
+@@ -6,7 +6,7 @@
+ 
+ NS_ASSUME_NONNULL_BEGIN
+ 
+-@interface EXNotificationSchedulerModule : EXExportedModule <EXModuleRegistryConsumer>
++@interface EXNotificationSchedulerModule : EXExportedModule
+ 
+ - (NSArray * _Nonnull)serializeNotificationRequests:(NSArray<UNNotificationRequest *> * _Nonnull) requests;
+ 
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.m
+index 49e7453..61e0f34 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.m
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.m
+@@ -2,9 +2,14 @@
+ 
+ #import <EXNotifications/EXNotificationSchedulerModule.h>
+ #import <EXNotifications/EXNotificationSerializer.h>
+-#import <EXNotifications/EXNotificationBuilder.h>
+ #import <EXNotifications/NSDictionary+EXNotificationsVerifyingClass.h>
+ 
++#if __has_include(<EXNotifications/EXNotifications-Swift.h>)
++#import <EXNotifications/EXNotifications-Swift.h>
++#else
++#import "EXNotifications-Swift.h"
++#endif
++
+ #import <UserNotifications/UserNotifications.h>
+ 
+ static NSString * const notificationTriggerTypeKey = @"type";
+@@ -44,19 +49,22 @@ static NSString * const calendarNotificationTriggerTimezoneKey = @"timezone";
+ 
+ @interface EXNotificationSchedulerModule ()
+ 
+-@property (nonatomic, weak) id<EXNotificationBuilder> builder;
++@property (nonatomic, strong) EXNotificationBuilder *builder;
+ 
+ @end
+ 
+ @implementation EXNotificationSchedulerModule
+ 
+-EX_EXPORT_MODULE(ExpoNotificationScheduler);
+-
+-- (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry
++- (EXNotificationSchedulerModule *)init
+ {
+-  _builder = [moduleRegistry getModuleImplementingProtocol:@protocol(EXNotificationBuilder)];
++  if (self = [super init]) {
++    self.builder = [EXNotificationBuilder new];
++  }
++  return self;
+ }
+ 
++EX_EXPORT_MODULE(ExpoNotificationScheduler);
++
+ # pragma mark - Exported methods
+ 
+ EX_EXPORT_METHOD_AS(getAllScheduledNotificationsAsync,
+@@ -72,7 +80,13 @@ EX_EXPORT_METHOD_AS(scheduleNotificationAsync,
+                      scheduleNotification:(NSString *)identifier notificationSpec:(NSDictionary *)notificationSpec triggerSpec:(NSDictionary *)triggerSpec resolve:(EXPromiseResolveBlock)resolve rejecting:(EXPromiseRejectBlock)reject)
+ {
+   @try {
+-    UNNotificationRequest *request = [self buildNotificationRequestWithIdentifier:identifier content:notificationSpec trigger:triggerSpec];
++    NSError *error = nil;
++    UNNotificationRequest *request = [self buildNotificationRequestWithIdentifier:identifier content:notificationSpec trigger:triggerSpec error:&error];
++    if (error) {
++      NSString *message = [NSString stringWithFormat:@"Failed to schedule notification. %@", error];
++      reject(@"ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", message, error);
++      return;
++    }
+     [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request withCompletionHandler:^(NSError * _Nullable error) {
+       if (error) {
+         NSString *message = [NSString stringWithFormat:@"Failed to schedule notification. %@", error];
+@@ -129,8 +143,9 @@ EX_EXPORT_METHOD_AS(getNextTriggerDateAsync,
+ - (UNNotificationRequest *)buildNotificationRequestWithIdentifier:(NSString *)identifier
+                                                           content:(NSDictionary *)contentInput
+                                                           trigger:(NSDictionary *)triggerInput
++                                                            error:(NSError **)error
+ {
+-  UNNotificationContent *content = [_builder notificationContentFromRequest:contentInput];
++  UNNotificationContent *content = [_builder notificationContentFromRequest:contentInput error:error];
+   UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:identifier content:content trigger:[self triggerFromParams:triggerInput]];
+   return request;
+ }
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenListener.h b/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenListener.h
 deleted file mode 100644
 index a5102aa..0000000
@@ -651,7 +1060,7 @@ index ecedf7a..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
 new file mode 100644
-index 0000000..d5f46dd
+index 0000000..b16f71e
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
 @@ -0,0 +1,26 @@
@@ -676,17 +1085,17 @@ index 0000000..d5f46dd
 +      userInfo: ["error": error]
 +    )
 +  }
++}
 +
-+  private func dataToString(_ data: Data) -> String {
-+    return data.map { String(format: "%02hhx", $0) }.joined()
-+  }
++private func dataToString(_ data: Data) -> String {
++  return data.map { String(format: "%02hhx", $0) }.joined()
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
 new file mode 100644
-index 0000000..4f51043
+index 0000000..7b6c5b7
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,60 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -718,7 +1127,7 @@ index 0000000..4f51043
 +
 +    Events([onDevicePushTokenEventName])
 +
-+    OnStartObserving {
++    OnStartObserving(onDevicePushTokenEventName) {
 +      NotificationCenter.default.addObserver(
 +        self,
 +        selector: #selector(onExpoNotificationsRegistrationResult),
@@ -727,26 +1136,24 @@ index 0000000..4f51043
 +      )
 +    }
 +
-+    OnStopObserving {
++    OnStopObserving(onDevicePushTokenEventName) {
 +      // swiftlint:disable:next notification_center_detachment
 +      NotificationCenter.default.removeObserver(self)
 +    }
 +
 +    AsyncFunction("getDevicePushTokenAsync") { (promise: Promise) in
-+      Task { @MainActor in
-+        if promiseNotYetResolved != nil {
-+          promise.reject("E_AWAIT_PROMISE", "Another async call to this method is in progress. Await the first Promise.")
-+        }
-+        promiseNotYetResolved = promise
-+        UIApplication.shared.registerForRemoteNotifications()
++      if promiseNotYetResolved != nil {
++        promise.reject("E_AWAIT_PROMISE", "Another async call to this method is in progress. Await the first Promise.")
 +      }
++      promiseNotYetResolved = promise
++      UIApplication.shared.registerForRemoteNotifications()
 +    }
++    .runOnQueue(.main)
 +
 +    AsyncFunction("unregisterForNotificationsAsync") { () in
-+      Task { @MainActor in
-+        UIApplication.shared.unregisterForRemoteNotifications()
-+      }
++      UIApplication.shared.unregisterForRemoteNotifications()
 +    }
++    .runOnQueue(.main)
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift b/node_modules/expo-notifications/ios/EXNotifications/ServerRegistration/ServerRegistrationModule.swift
