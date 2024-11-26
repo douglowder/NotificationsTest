@@ -209,17 +209,16 @@ index 53ec405..0000000
 -
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
 new file mode 100644
-index 0000000..ec7c299
+index 0000000..74c941a
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,122 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
 +
 +@objc(EXNotificationBuilder)
 +public class NotificationBuilder: NSObject {
-+
 +  @objc(notificationContentFromRequest:error:)
 +  public func content(_ request: [AnyHashable: Any]) throws -> UNMutableNotificationContent {
 +    let content = UNMutableNotificationContent()
@@ -240,8 +239,9 @@ index 0000000..ec7c299
 +      content.launchImageName = launchImageName
 +    }
 +
-+    if let badge: Int = try? request.verifiedProperty("badge", type: Int.self) {
-+      content.badge = NSNumber(integerLiteral: badge)
++    if let badge = try? request.verifiedProperty("badge", type: Int.self) {
++      // swiftlint:disable:next legacy_objc_type
++      content.badge = NSNumber.init(value: badge)
 +    }
 +
 +    if let userInfo: [AnyHashable: Any] = try? request.verifiedProperty("userInfo", type: [AnyHashable: Any].self) {
@@ -252,8 +252,8 @@ index 0000000..ec7c299
 +      content.categoryIdentifier = categoryIdentifier
 +    }
 +
-+    if let sound = request["sound"] as? NSNumber {
-+      content.sound = sound.boolValue ? .default : .none
++    if let sound = request["sound"] as? Bool {
++      content.sound = sound ? .default : .none
 +    } else if let soundName = request["sound"] as? String {
 +      if soundName == "default" {
 +        content.sound = UNNotificationSound.default
@@ -283,7 +283,13 @@ index 0000000..ec7c299
 +    let identifier = request["identifier"] as? String ?? ""
 +    let uri = request["uri"] as? String ?? ""
 +    do {
-+      if let attachment: UNNotificationAttachment = try? UNNotificationAttachment(identifier: identifier, url: URL(string: uri)!, options:attachmentOptions(request)) {
++      if let url = URL(string: uri),
++        let attachment: UNNotificationAttachment =
++          try? UNNotificationAttachment(
++            identifier: identifier,
++            url: url,
++            options: attachmentOptions(request)
++          ) {
 +        return attachment
 +      }
 +      return nil
@@ -299,15 +305,21 @@ index 0000000..ec7c299
 +      options[UNNotificationAttachmentOptionsThumbnailHiddenKey] = hideThumbnail
 +    }
 +    if let thumbnailClipArea = request["thumbnailClipArea"] as? [String: Any] {
-+      let x = thumbnailClipArea["x"] as? NSNumber
-+      let y = thumbnailClipArea["y"] as? NSNumber
-+      let width = thumbnailClipArea["width"] as? NSNumber
-+      let height = thumbnailClipArea["height"] as? NSNumber
++      let x = thumbnailClipArea["x"] as? Double
++      let y = thumbnailClipArea["y"] as? Double
++      let width = thumbnailClipArea["width"] as? Double
++      let height = thumbnailClipArea["height"] as? Double
 +      if let x, let y, let width, let height {
-+        options[UNNotificationAttachmentOptionsThumbnailClippingRectKey] = CGRect(x: x.doubleValue, y: y.doubleValue, width: width.doubleValue, height: height.doubleValue)
++        options[UNNotificationAttachmentOptionsThumbnailClippingRectKey] =
++          CGRect(
++            x: x,
++            y: y,
++            width: width,
++            height: height
++          )
 +      }
 +    }
-+    if let thumbnailTime = request["thumbnailTime"] as? NSNumber {
++    if let thumbnailTime = request["thumbnailTime"] as? TimeInterval {
 +      options[UNNotificationAttachmentOptionsThumbnailTimeKey] = thumbnailTime
 +    }
 +    return options
@@ -982,7 +994,7 @@ index 49e7453..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
 new file mode 100644
-index 0000000..ee1cdf0
+index 0000000..a2805e4
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
 @@ -0,0 +1,208 @@
@@ -1156,7 +1168,7 @@ index 0000000..ee1cdf0
 +      }
 +      UNUserNotificationCenter.current().add(request) {error in
 +        if let error = error {
-+          promise.reject("ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", "Failed to schedule notification")
++          promise.reject("ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", "Failed to schedule notification, \(error)")
 +        } else {
 +          promise.resolve()
 +        }
@@ -1196,16 +1208,18 @@ index 0000000..ee1cdf0
 +
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift
 new file mode 100644
-index 0000000..32f8b4b
+index 0000000..7596016
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,15 @@
 +import ExpoModulesCore
 +
 +public extension [AnyHashable: Any] {
 +  func verifiedProperty<T>(_ key: String, type: T.Type) throws -> T? {
 +    let request = self
-+    if request[key] == nil { return nil }
++    if request[key] == nil {
++      return nil
++    }
 +    guard let value = request[key] as? T else {
 +      let exceptionName = "Value under key \(key) is not a valid \(type)"
 +      throw Exception(name: exceptionName, description: "")
