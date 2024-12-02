@@ -994,16 +994,17 @@ index 49e7453..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
 new file mode 100644
-index 0000000..a2805e4
+index 0000000..15b9e4f
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,212 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
 +import UIKit
 +import MachO
 +
++// swiftlint:disable identifier_name
 +let notificationTriggerTypeKey = "type"
 +let notificationTriggerRepeatsKey = "repeats"
 +
@@ -1036,6 +1037,7 @@ index 0000000..a2805e4
 +let calendarNotificationTriggerType = "calendar"
 +let calendarNotificationTriggerComponentsKey = "value"
 +let calendarNotificationTriggerTimezoneKey = "timezone"
++// swiftlint:enable identifier_name
 +
 +let dateComponentsMatchMap: [String: Calendar.Component] = [
 +  "year": .year,
@@ -1054,7 +1056,9 @@ index 0000000..a2805e4
 +  let builder: NotificationBuilder = NotificationBuilder()
 +
 +  func triggerFromParams(_ params: [AnyHashable: Any]?) throws -> UNNotificationTrigger? {
-+    guard let params = params else { return nil }
++    guard let params = params else {
++      return nil
++    }
 +
 +    guard let triggerType = params[notificationTriggerTypeKey] as? String else {
 +      return nil
@@ -1062,36 +1066,36 @@ index 0000000..a2805e4
 +
 +    switch triggerType {
 +    case intervalNotificationTriggerType:
-+      let interval: TimeInterval = try! params.verifiedProperty(intervalNotificationTriggerIntervalKey, type: TimeInterval.self) ?? 0
++      let interval = (try? params.verifiedProperty(intervalNotificationTriggerIntervalKey, type: TimeInterval.self)) ?? 0
 +      let repeats: Bool = ((try? params.verifiedProperty(notificationTriggerRepeatsKey, type: Bool.self) ?? false) != nil)
 +      return UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: repeats)
 +    case dateNotificationTriggerType:
-+      let timestampMs: TimeInterval = try! params.verifiedProperty(dateNotificationTriggerTimestampKey, type: TimeInterval.self) ?? 0
++      let timestampMs: TimeInterval = (try? params.verifiedProperty(dateNotificationTriggerTimestampKey, type: TimeInterval.self)) ?? 0
 +      let timestamp: Int = Int(timestampMs / 1000)
 +      let date: Date = Date(timeIntervalSince1970: TimeInterval(timestamp))
 +      return UNTimeIntervalNotificationTrigger(timeInterval: date.timeIntervalSinceNow, repeats: false)
 +    case dailyNotificationTriggerType:
-+      let hour: Int = try! params.verifiedProperty(dailyNotificationTriggerHourKey, type: Int.self) ?? 0
-+      let minute: Int = try! params.verifiedProperty(dailyNotificationTriggerMinuteKey, type: Int.self) ?? 0
++      let hour: Int = (try? params.verifiedProperty(dailyNotificationTriggerHourKey, type: Int.self)) ?? 0
++      let minute: Int = (try? params.verifiedProperty(dailyNotificationTriggerMinuteKey, type: Int.self)) ?? 0
 +      let dateComponents: DateComponents = DateComponents(hour: hour, minute: minute)
 +      return UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 +    case weeklyNotificationTriggerType:
-+      let weekday: Int = try! params.verifiedProperty(weeklyNotificationTriggerWeekdayKey, type: Int.self) ?? 0
-+      let hour: Int = try! params.verifiedProperty(weeklyNotificationTriggerHourKey, type: Int.self) ?? 0
-+      let minute: Int = try! params.verifiedProperty(weeklyNotificationTriggerMinuteKey, type: Int.self) ?? 0
++      let weekday: Int = (try? params.verifiedProperty(weeklyNotificationTriggerWeekdayKey, type: Int.self)) ?? 0
++      let hour: Int = (try? params.verifiedProperty(weeklyNotificationTriggerHourKey, type: Int.self)) ?? 0
++      let minute: Int = (try? params.verifiedProperty(weeklyNotificationTriggerMinuteKey, type: Int.self)) ?? 0
 +      let dateComponents: DateComponents = DateComponents(hour: hour, minute: minute, weekday: weekday)
 +      return UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 +    case monthlyNotificationTriggerType:
-+      let day: Int = try! params.verifiedProperty(monthlyNotificationTriggerDayKey, type: Int.self) ?? 0
-+      let hour: Int = try! params.verifiedProperty(monthlyNotificationTriggerHourKey, type: Int.self) ?? 0
-+      let minute: Int = try! params.verifiedProperty(monthlyNotificationTriggerMinuteKey, type: Int.self) ?? 0
++      let day: Int = (try? params.verifiedProperty(monthlyNotificationTriggerDayKey, type: Int.self)) ?? 0
++      let hour: Int = (try? params.verifiedProperty(monthlyNotificationTriggerHourKey, type: Int.self)) ?? 0
++      let minute: Int = (try? params.verifiedProperty(monthlyNotificationTriggerMinuteKey, type: Int.self)) ?? 0
 +      let dateComponents: DateComponents = DateComponents(day: day, hour: hour, minute: minute)
 +      return UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 +    case yearlyNotificationTriggerType:
-+      let month: Int = try! params.verifiedProperty(yearlyNotificationTriggerMonthKey, type: Int.self) ?? 0
-+      let day: Int = try! params.verifiedProperty(yearlyNotificationTriggerDayKey, type: Int.self) ?? 0
-+      let hour: Int = try! params.verifiedProperty(yearlyNotificationTriggerHourKey, type: Int.self) ?? 0
-+      let minute: Int = try! params.verifiedProperty(yearlyNotificationTriggerMinuteKey, type: Int.self) ?? 0
++      let month: Int = (try? params.verifiedProperty(yearlyNotificationTriggerMonthKey, type: Int.self)) ?? 0
++      let day: Int = (try? params.verifiedProperty(yearlyNotificationTriggerDayKey, type: Int.self)) ?? 0
++      let hour: Int = (try? params.verifiedProperty(yearlyNotificationTriggerHourKey, type: Int.self)) ?? 0
++      let minute: Int = (try? params.verifiedProperty(yearlyNotificationTriggerMinuteKey, type: Int.self)) ?? 0
 +      let dateComponents: DateComponents = DateComponents(month: month, day: day, hour: hour, minute: minute)
 +      return UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 +    case calendarNotificationTriggerType:
