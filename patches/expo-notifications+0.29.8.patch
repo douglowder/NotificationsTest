@@ -209,7 +209,7 @@ index 53ec405..0000000
 -
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
 new file mode 100644
-index 0000000..74c941a
+index 0000000..1968f00
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
 @@ -0,0 +1,122 @@
@@ -220,7 +220,7 @@ index 0000000..74c941a
 +@objc(EXNotificationBuilder)
 +public class NotificationBuilder: NSObject {
 +  @objc(notificationContentFromRequest:error:)
-+  public func content(_ request: [AnyHashable: Any]) throws -> UNMutableNotificationContent {
++  public func content(_ request: [String: Any]) throws -> UNMutableNotificationContent {
 +    let content = UNMutableNotificationContent()
 +
 +    if let title: String = try? request.verifiedProperty("title", type: String.self) {
@@ -244,7 +244,7 @@ index 0000000..74c941a
 +      content.badge = NSNumber.init(value: badge)
 +    }
 +
-+    if let userInfo: [AnyHashable: Any] = try? request.verifiedProperty("userInfo", type: [AnyHashable: Any].self) {
++    if let userInfo: [String: Any] = try? request.verifiedProperty("userInfo", type: [String: Any].self) {
 +      content.userInfo = userInfo
 +    }
 +
@@ -279,7 +279,7 @@ index 0000000..74c941a
 +    return content
 +  }
 +
-+  func attachment(_ request: [AnyHashable: Any]) -> UNNotificationAttachment? {
++  func attachment(_ request: [String: Any]) -> UNNotificationAttachment? {
 +    let identifier = request["identifier"] as? String ?? ""
 +    let uri = request["uri"] as? String ?? ""
 +    do {
@@ -296,8 +296,8 @@ index 0000000..74c941a
 +    }
 +  }
 +
-+  func attachmentOptions(_ request: [AnyHashable: Any]) -> [AnyHashable: Any] {
-+    var options: [AnyHashable: Any] = [:]
++  func attachmentOptions(_ request: [String: Any]) -> [String: Any] {
++    var options: [String: Any] = [:]
 +    if let typeHint = request["typeHint"] as? String {
 +      options[UNNotificationAttachmentOptionsTypeHintKey] = typeHint
 +    }
@@ -1052,10 +1052,10 @@ index 49e7453..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
 new file mode 100644
-index 0000000..167ba70
+index 0000000..9528351
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,254 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1066,33 +1066,14 @@ index 0000000..167ba70
 +let notificationTriggerTypeKey = "type"
 +let notificationTriggerRepeatsKey = "repeats"
 +
-+let intervalNotificationTriggerType = "timeInterval"
-+let intervalNotificationTriggerIntervalKey = "seconds"
-+
++let timeIntervalNotificationTriggerType = "timeInterval"
 +let dailyNotificationTriggerType = "daily"
-+let dailyNotificationTriggerHourKey = "hour"
-+let dailyNotificationTriggerMinuteKey = "minute"
-+
 +let weeklyNotificationTriggerType = "weekly"
-+let weeklyNotificationTriggerWeekdayKey = "weekday"
-+let weeklyNotificationTriggerHourKey = "hour"
-+let weeklyNotificationTriggerMinuteKey = "minute"
-+
 +let monthlyNotificationTriggerType = "monthly"
-+let monthlyNotificationTriggerDayKey = "day"
-+let monthlyNotificationTriggerHourKey = "hour"
-+let monthlyNotificationTriggerMinuteKey = "minute"
-+
 +let yearlyNotificationTriggerType = "yearly"
-+let yearlyNotificationTriggerMonthKey = "month"
-+let yearlyNotificationTriggerDayKey = "day"
-+let yearlyNotificationTriggerHourKey = "hour"
-+let yearlyNotificationTriggerMinuteKey = "minute"
-+
 +let dateNotificationTriggerType = "date"
-+let dateNotificationTriggerTimestampKey = "timestamp"
-+
 +let calendarNotificationTriggerType = "calendar"
++
 +let calendarNotificationTriggerComponentsKey = "value"
 +let calendarNotificationTriggerTimezoneKey = "timezone"
 +// swiftlint:enable identifier_name
@@ -1110,11 +1091,60 @@ index 0000000..167ba70
 +  "weekdayOrdinal": .weekdayOrdinal
 +]
 +
++struct TimeIntervalTriggerRecord: Record {
++  @Field
++  var seconds: TimeInterval
++  @Field
++  var repeats: Bool
++}
++
++struct DateTriggerRecord: Record {
++  @Field
++  var timestamp: TimeInterval
++}
++
++struct DailyTriggerRecord: Record {
++  @Field
++  var hour: Int
++  @Field
++  var minute: Int
++}
++
++struct WeeklyTriggerRecord: Record {
++  @Field
++  var weekday: Int
++  @Field
++  var hour: Int
++  @Field
++  var minute: Int
++}
++
++struct MonthlyTriggerRecord: Record {
++  @Field
++  var day: Int
++  @Field
++  var hour: Int
++  @Field
++  var minute: Int
++}
++
++struct YearlyTriggerRecord: Record {
++  @Field
++  var month: Int
++  @Field
++  var day: Int
++  @Field
++  var hour: Int
++  @Field
++  var minute: Int
++}
++
 +public class SchedulerModule: Module {
 +  let builder: NotificationBuilder = NotificationBuilder()
 +
-+  func triggerFromParams(_ params: [AnyHashable: Any]?) throws -> UNNotificationTrigger? {
-+    guard let params = params else {
++  func triggerFromParams(_ params: [String: Any]?) throws -> UNNotificationTrigger? {
++    guard let params = params,
++      let appContext = appContext else {
 +      return nil
 +    }
 +
@@ -1123,17 +1153,16 @@ index 0000000..167ba70
 +    }
 +
 +    switch triggerType {
-+    case intervalNotificationTriggerType:
-+      let interval = (try? params.verifiedProperty(intervalNotificationTriggerIntervalKey, type: TimeInterval.self)) ?? 0
-+      let repeats: Bool = (try? params.verifiedProperty(notificationTriggerRepeatsKey, type: Bool.self)) ?? false
++    case timeIntervalNotificationTriggerType:
++      let timeIntervalTrigger = try TimeIntervalTriggerRecord(from: params, appContext: appContext)
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
-+        trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: repeats)
++        trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeIntervalTrigger.seconds, repeats: timeIntervalTrigger.repeats)
 +      }
 +      return trigger
 +    case dateNotificationTriggerType:
-+      let timestampMs: TimeInterval = (try? params.verifiedProperty(dateNotificationTriggerTimestampKey, type: TimeInterval.self)) ?? 0
-+      let timestamp: Int = Int(timestampMs / 1000)
++      let dateTrigger = try DateTriggerRecord(from: params, appContext: appContext)
++      let timestamp: Int = Int(dateTrigger.timestamp / 1000)
 +      let date: Date = Date(timeIntervalSince1970: TimeInterval(timestamp))
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
@@ -1141,40 +1170,32 @@ index 0000000..167ba70
 +      }
 +      return trigger
 +    case dailyNotificationTriggerType:
-+      let hour: Int = (try? params.verifiedProperty(dailyNotificationTriggerHourKey, type: Int.self)) ?? 0
-+      let minute: Int = (try? params.verifiedProperty(dailyNotificationTriggerMinuteKey, type: Int.self)) ?? 0
-+      let dateComponents: DateComponents = DateComponents(hour: hour, minute: minute)
++      let dailyTrigger = try DailyTriggerRecord(from: params, appContext: appContext)
++      let dateComponents: DateComponents = DateComponents(hour: dailyTrigger.hour, minute: dailyTrigger.minute)
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
 +        trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 +      }
 +      return trigger
 +    case weeklyNotificationTriggerType:
-+      let weekday: Int = (try? params.verifiedProperty(weeklyNotificationTriggerWeekdayKey, type: Int.self)) ?? 0
-+      let hour: Int = (try? params.verifiedProperty(weeklyNotificationTriggerHourKey, type: Int.self)) ?? 0
-+      let minute: Int = (try? params.verifiedProperty(weeklyNotificationTriggerMinuteKey, type: Int.self)) ?? 0
-+      let dateComponents: DateComponents = DateComponents(hour: hour, minute: minute, weekday: weekday)
++      let weeklyTrigger = try WeeklyTriggerRecord(from: params, appContext: appContext)
++      let dateComponents: DateComponents = DateComponents(hour: weeklyTrigger.hour, minute: weeklyTrigger.minute, weekday: weeklyTrigger.weekday)
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
 +        trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 +      }
 +      return trigger
 +    case monthlyNotificationTriggerType:
-+      let day: Int = (try? params.verifiedProperty(monthlyNotificationTriggerDayKey, type: Int.self)) ?? 0
-+      let hour: Int = (try? params.verifiedProperty(monthlyNotificationTriggerHourKey, type: Int.self)) ?? 0
-+      let minute: Int = (try? params.verifiedProperty(monthlyNotificationTriggerMinuteKey, type: Int.self)) ?? 0
-+      let dateComponents: DateComponents = DateComponents(day: day, hour: hour, minute: minute)
++      let monthlyTrigger = try MonthlyTriggerRecord(from: params, appContext: appContext)
++      let dateComponents: DateComponents = DateComponents(day: monthlyTrigger.day, hour: monthlyTrigger.hour, minute: monthlyTrigger.minute)
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
 +        trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 +      }
 +      return trigger
 +    case yearlyNotificationTriggerType:
-+      let month: Int = (try? params.verifiedProperty(yearlyNotificationTriggerMonthKey, type: Int.self)) ?? 0
-+      let day: Int = (try? params.verifiedProperty(yearlyNotificationTriggerDayKey, type: Int.self)) ?? 0
-+      let hour: Int = (try? params.verifiedProperty(yearlyNotificationTriggerHourKey, type: Int.self)) ?? 0
-+      let minute: Int = (try? params.verifiedProperty(yearlyNotificationTriggerMinuteKey, type: Int.self)) ?? 0
-+      let dateComponents: DateComponents = DateComponents(month: month, day: day, hour: hour, minute: minute)
++      let yearlyTrigger = try YearlyTriggerRecord(from: params, appContext: appContext)
++      let dateComponents: DateComponents = DateComponents(month: yearlyTrigger.month, day: yearlyTrigger.day, hour: yearlyTrigger.hour, minute: yearlyTrigger.minute)
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
 +        trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
@@ -1193,7 +1214,7 @@ index 0000000..167ba70
 +    }
 +  }
 +
-+  func dateComponentsFrom(_ params: [AnyHashable: Any]) -> DateComponents? {
++  func dateComponentsFrom(_ params: [String: Any]) -> DateComponents? {
 +    var dateComponents = DateComponents()
 +    // TODO: Verify that DoW matches JS getDay()
 +    dateComponents.calendar = Calendar.init(identifier: .iso8601)
@@ -1219,8 +1240,8 @@ index 0000000..167ba70
 +
 +  func buildNotificationRequest(
 +    identifier: String,
-+    contentInput: [AnyHashable: Any],
-+    triggerInput: [AnyHashable: Any]
++    contentInput: [String: Any],
++    triggerInput: [String: Any]
 +  ) throws -> UNNotificationRequest? {
 +    return try UNNotificationRequest(identifier: identifier, content: builder.content(contentInput), trigger: triggerFromParams(triggerInput))
 +  }
@@ -1248,7 +1269,7 @@ index 0000000..167ba70
 +    }
 +
 +    // swiftlint:disable:next line_length
-+    AsyncFunction("scheduleNotificationAsync") { (identifier: String, notificationSpec: [AnyHashable: Any], triggerSpec: [AnyHashable: Any], promise: Promise) in
++    AsyncFunction("scheduleNotificationAsync") { (identifier: String, notificationSpec: [String: Any], triggerSpec: [String: Any], promise: Promise) in
 +      guard let request = try? buildNotificationRequest(identifier: identifier, contentInput: notificationSpec, triggerInput: triggerSpec) else {
 +        promise.reject("ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", "Failed to build notification request")
 +        return
@@ -1262,7 +1283,7 @@ index 0000000..167ba70
 +      }
 +    }
 +
-+    AsyncFunction("getNextTriggerDateAsync") { (triggerSpec: [AnyHashable: Any], promise: Promise) in
++    AsyncFunction("getNextTriggerDateAsync") { (triggerSpec: [String: Any], promise: Promise) in
 +      guard let trigger = try? triggerFromParams(triggerSpec) else {
 +        promise.reject("ERR_NOTIFICATIONS_INVALID_CALENDAR_TRIGGER", "Invalid trigger specification")
 +        return
@@ -1291,13 +1312,13 @@ index 0000000..167ba70
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift
 new file mode 100644
-index 0000000..7596016
+index 0000000..8f41ee9
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift
 @@ -0,0 +1,15 @@
 +import ExpoModulesCore
 +
-+public extension [AnyHashable: Any] {
++public extension [String: Any] {
 +  func verifiedProperty<T>(_ key: String, type: T.Type) throws -> T? {
 +    let request = self
 +    if request[key] == nil {
