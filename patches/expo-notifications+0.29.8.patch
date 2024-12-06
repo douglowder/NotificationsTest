@@ -209,10 +209,10 @@ index 53ec405..0000000
 -
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
 new file mode 100644
-index 0000000..3ab6b0a
+index 0000000..6916264
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,147 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -240,15 +240,8 @@ index 0000000..3ab6b0a
 +  var interruptionLevel: String?
 +}
 +
-+@objc(EXNotificationBuilder)
 +public class NotificationBuilder: NSObject {
-+  var appContext: AppContext
-+  required init(appContext: AppContext) {
-+    self.appContext = appContext
-+  }
-+  
-+  @objc(notificationContentFromRequest:error:)
-+  public func content(_ request: [String: Any]) throws -> UNMutableNotificationContent {
++  public class func content(_ request: [String: Any], appContext: AppContext) throws -> UNMutableNotificationContent {
 +    let content = UNMutableNotificationContent()
 +    let request = try NotificationRequestRecord(from: request, appContext: appContext)
 +
@@ -269,6 +262,7 @@ index 0000000..3ab6b0a
 +    }
 +
 +    if let badge = request.badge {
++      // swiftlint:disable:next legacy_objc_type
 +      content.badge = NSNumber.init(value: badge)
 +    }
 +
@@ -279,7 +273,6 @@ index 0000000..3ab6b0a
 +    if let categoryIdentifier = request.categoryIdentifier {
 +      content.categoryIdentifier = categoryIdentifier
 +    }
-+
 +
 +    if let sound = request.sound {
 +      if let soundBool = try? sound.as(Bool.self) {
@@ -311,7 +304,7 @@ index 0000000..3ab6b0a
 +    return content
 +  }
 +
-+  func attachment(_ request: [String: Any]) -> UNNotificationAttachment? {
++  class func attachment(_ request: [String: Any]) -> UNNotificationAttachment? {
 +    let identifier = request["identifier"] as? String ?? ""
 +    let uri = request["uri"] as? String ?? ""
 +    do {
@@ -328,7 +321,7 @@ index 0000000..3ab6b0a
 +    }
 +  }
 +
-+  func attachmentOptions(_ request: [String: Any]) -> [String: Any] {
++  class func attachmentOptions(_ request: [String: Any]) -> [String: Any] {
 +    var options: [String: Any] = [:]
 +    if let typeHint = request["typeHint"] as? String {
 +      options[UNNotificationAttachmentOptionsTypeHintKey] = typeHint
@@ -357,7 +350,7 @@ index 0000000..3ab6b0a
 +    return options
 +  }
 +
-+  func deserializeInterruptionLevel(_ interruptionLevel: String) -> UNNotificationInterruptionLevel {
++  class func deserializeInterruptionLevel(_ interruptionLevel: String) -> UNNotificationInterruptionLevel {
 +    switch interruptionLevel {
 +    case "passive": return .passive
 +    case "active": return .active
@@ -652,6 +645,56 @@ index 83e10fc..0000000
 -}
 -
 -@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h
+index 91436d8..c7aed60 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h
+@@ -17,15 +17,16 @@ NS_ASSUME_NONNULL_BEGIN
+ 
+ @end
+ 
+-@interface EXNotificationCenterDelegate : EXSingletonModule <UIApplicationDelegate, UNUserNotificationCenterDelegate, EXNotificationCenterDelegate>
++@interface EXNotificationCenterDelegate : EXSingletonModule <UIApplicationDelegate, EXNotificationCenterDelegate>
+ 
+ - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(nullable NSDictionary<UIApplicationLaunchOptionsKey,id> *)launchOptions;
+ - (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler;
+ 
++/*
+ - (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler;
+ - (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler;
+ - (void)userNotificationCenter:(UNUserNotificationCenter *)center openSettingsForNotification:(nullable UNNotification *)notification;
+-
++ */
+ @property (nonatomic, strong, nullable) UNNotificationResponse *lastNotificationResponse;
+ 
+ @end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m
+index 934470e..42d3e8c 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m
+@@ -4,6 +4,12 @@
+ #import <ExpoModulesCore/EXDefines.h>
+ #import <EXNotifications/EXNotificationsDelegate.h>
+ 
++#if __has_include(<ExpoModulesCore/ExpoModulesCore-Swift.h>)
++#import <EXNotifications/EXNotifications-Swift.h>
++#else
++#import "EXNotifications-Swift.h"
++#endif
++
+ @interface EXNotificationCenterDelegate ()
+ 
+ @property (nonatomic, strong) NSPointerArray *delegates;
+@@ -38,7 +44,8 @@ EX_REGISTER_SINGLETON_MODULE(NotificationCenterDelegate);
+     return YES;
+   }
+ 
+-  [[UNUserNotificationCenter currentNotificationCenter] setDelegate:self];
++  EXNotificationCenterManager *manager = [EXNotificationCenterManager shared];
++  [[UNUserNotificationCenter currentNotificationCenter] setDelegate:manager];
+   return YES;
+ }
+ 
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationObjcWrapper.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationObjcWrapper.h
 new file mode 100644
 index 0000000..a8a7cfb
@@ -748,28 +791,48 @@ index 8671d67..0000000
 -}
 -
 -@end
-diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
 new file mode 100644
-index 0000000..3d9b695
+index 0000000..598f6ee
 --- /dev/null
-+++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift
-@@ -0,0 +1,93 @@
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
+@@ -0,0 +1,131 @@
 +import ExpoModulesCore
 +import Foundation
 +
-+public protocol NotificationsPresentationDelegate: AnyObject {
++/**
++ Protocols that NotificationCenterManager delegates may implement
++ */
++public protocol NotificationPresentationDelegate: AnyObject {
 +  func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void)
 +}
 +
-+public protocol NotificationsResponseDelegate: AnyObject {
++public protocol NotificationResponseDelegate: AnyObject {
 +  func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void)
 +}
-+public protocol NotificationsSettingsDelegate: AnyObject {
++public protocol NotificationSettingsDelegate: AnyObject {
 +  func openSettings(_ notification: UNNotification?)
 +}
 +
-+public class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate {
-+  public static let shared = NotificationCenterDelegate()
++public protocol NotificationRegistrationSuccessDelegate: AnyObject {
++  func didRegister(_ deviceToken: String)
++}
++
++public protocol NotificationRegistrationFailureDelegate: AnyObject {
++  func didFailRegistration(_ error: Error)
++}
++
++/**
++ Singleton that sets itself as the UserNotificationCenter delegate,
++ and calls its own delegates in response to notification center calls.
++ */
++@objc(EXNotificationCenterManager)
++public class NotificationCenterManager: NSObject,
++  UNUserNotificationCenterDelegate,
++  NotificationRegistrationFailureDelegate,
++  NotificationRegistrationSuccessDelegate {
++  @objc
++  public static let shared = NotificationCenterManager()
 +
 +  var delegates: [AnyObject] = []
 +  var pendingResponses: [UNNotificationResponse] = []
@@ -792,7 +855,7 @@ index 0000000..3d9b695
 +
 +  public func addDelegate(_ delegate: AnyObject) {
 +    delegates.append(delegate)
-+    if let delegate = delegate as? NotificationsResponseDelegate {
++    if let delegate = delegate as? NotificationResponseDelegate {
 +      for pendingResponse in pendingResponses {
 +        delegate.didReceive(pendingResponse, completionHandler: {})
 +      }
@@ -800,9 +863,27 @@ index 0000000..3d9b695
 +    }
 +  }
 +
-+  @objc public func removeDelegate(_ delegate: AnyObject) {
++  public func removeDelegate(_ delegate: AnyObject) {
 +    if let index = delegates.firstIndex(where: { $0 === delegate }) {
 +      delegates.remove(at: index)
++    }
++  }
++
++  // MARK: - Called by PushTokenAppDelegateSubscriber
++
++  public func didFailRegistration(_ error: any Error) {
++    for delegate in delegates {
++      if let delegate = delegate as? NotificationRegistrationFailureDelegate {
++        delegate.didFailRegistration(error)
++      }
++    }
++  }
++
++  public func didRegister(_ deviceToken: String) {
++    for delegate in delegates {
++      if let delegate = delegate as? NotificationRegistrationSuccessDelegate {
++        delegate.didRegister(deviceToken)
++      }
 +    }
 +  }
 +
@@ -814,7 +895,7 @@ index 0000000..3d9b695
 +    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
 +  ) {
 +    for delegate in delegates {
-+      if let delegate = delegate as? NotificationsPresentationDelegate {
++      if let delegate = delegate as? NotificationPresentationDelegate {
 +        delegate.willPresent(notification, completionHandler: completionHandler)
 +      }
 +    }
@@ -828,7 +909,7 @@ index 0000000..3d9b695
 +  ) {
 +    var handled = false
 +    for delegate in delegates {
-+      if let delegate = delegate as? NotificationsResponseDelegate {
++      if let delegate = delegate as? NotificationResponseDelegate {
 +        delegate.didReceive(response, completionHandler: completionHandler)
 +      }
 +      handled = true
@@ -841,7 +922,7 @@ index 0000000..3d9b695
 +
 +  public func userNotificationCenter(_ center: UNUserNotificationCenter, openSettingsFor notification: UNNotification?) {
 +    for delegate in delegates {
-+      if let delegate = delegate as? NotificationsSettingsDelegate {
++      if let delegate = delegate as? NotificationSettingsDelegate {
 +        delegate.openSettings(notification)
 +      }
 +    }
@@ -998,18 +1079,17 @@ index 8410fa4..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
 new file mode 100644
-index 0000000..a2378e7
+index 0000000..568f822
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,81 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
 +import UIKit
 +import MachO
 +
-+public class PresentationModule: Module, NotificationsPresentationDelegate {
-+  var builder: NotificationBuilder?
++public class PresentationModule: Module, NotificationPresentationDelegate {
 +  var presentedNotifications: Set<String> = []
 +
 +  public func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -1022,33 +1102,25 @@ index 0000000..a2378e7
 +    }
 +  }
 +
-+  @objc
-+  public func onExpoNotificationsPresentationResult(notification: Notification) {
-+
-+  }
-+
 +  public func definition() -> ModuleDefinition {
 +    Name("ExpoNotificationPresenter")
 +
 +    OnStartObserving {
-+      if let appContext = self.appContext {
-+        self.builder = NotificationBuilder(appContext: appContext)
-+        NotificationCenterDelegate.shared.addDelegate(self)
-+      }
++      NotificationCenterManager.shared.addDelegate(self)
 +    }
 +
 +    OnStopObserving {
-+      NotificationCenterDelegate.shared.removeDelegate(self)
++      NotificationCenterManager.shared.removeDelegate(self)
 +    }
 +
 +    AsyncFunction("presentNotificationAsync") { (identifier: String, notificationSpec: [String: Any], promise: Promise) in
 +      do {
-+        guard let builder = self.builder else {
++        guard let appContext = appContext else {
 +          let error = NSError(domain: "ExpoNotificationPresenter", code: 0, userInfo: nil)
 +          promise.reject("ERR_NOTIF_PRESENT", error.localizedDescription)
 +          return
 +        }
-+        let content = try builder.content(notificationSpec)
++        let content = try NotificationBuilder.content(notificationSpec, appContext: appContext)
 +        var request: UNNotificationRequest?
 +        try EXNotificationObjcWrapper.tryExecute {
 +          request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
@@ -1084,7 +1156,6 @@ index 0000000..a2378e7
 +    AsyncFunction("dismissAllNotificationsAsync") {
 +      UNUserNotificationCenter.current().removeAllDeliveredNotifications()
 +    }
-+
 +  }
 +
 +  func serializeNotifications(_ notifications: [UNNotification]) -> [[AnyHashable: Any]] {
@@ -1407,10 +1478,10 @@ index 49e7453..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
 new file mode 100644
-index 0000000..b21bc90
+index 0000000..bd3bedb
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
-@@ -0,0 +1,297 @@
+@@ -0,0 +1,295 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1522,11 +1593,8 @@ index 0000000..b21bc90
 +}
 +
 +public class SchedulerModule: Module {
-+  var builder: NotificationBuilder?
-+
-+  func triggerFromParams(_ params: [String: Any]?) throws -> UNNotificationTrigger? {
-+    guard let params = params,
-+      let appContext = appContext else {
++  func triggerFromParams(_ params: [String: Any]?, appContext: AppContext) throws -> UNNotificationTrigger? {
++    guard let params = params else {
 +      return nil
 +    }
 +
@@ -1629,23 +1697,20 @@ index 0000000..b21bc90
 +  func buildNotificationRequest(
 +    identifier: String,
 +    contentInput: [String: Any],
-+    triggerInput: [String: Any]
++    triggerInput: [String: Any]?
 +  ) throws -> UNNotificationRequest? {
-+    guard let builder else {
-+      throw Exception(name: "ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", description: "Notification builder not initialized")
++    guard let appContext = appContext else {
++      return nil
 +    }
-+    return try UNNotificationRequest(identifier: identifier, content: builder.content(contentInput), trigger: triggerFromParams(triggerInput))
++    return try UNNotificationRequest(
++      identifier: identifier,
++      content: NotificationBuilder.content(contentInput, appContext: appContext),
++      trigger: triggerFromParams(triggerInput, appContext: appContext)
++    )
 +  }
 +
 +  public func definition() -> ModuleDefinition {
 +    Name("ExpoNotificationScheduler")
-+
-+    OnStartObserving {
-+      guard let appContext = self.appContext else {
-+        return
-+      }
-+      self.builder = NotificationBuilder(appContext: appContext)
-+    }
 +
 +    AsyncFunction("getAllScheduledNotificationsAsync") { (promise: Promise) in
 +      UNUserNotificationCenter.current().getPendingNotificationRequests { (requests: [UNNotificationRequest]) in
@@ -1666,23 +1731,27 @@ index 0000000..b21bc90
 +      UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
 +    }
 +
-+    // swiftlint:disable:next line_length
-+    AsyncFunction("scheduleNotificationAsync") { (identifier: String, notificationSpec: [String: Any], triggerSpec: [String: Any], promise: Promise) in
-+      guard let request = try? buildNotificationRequest(identifier: identifier, contentInput: notificationSpec, triggerInput: triggerSpec) else {
-+        promise.reject("ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", "Failed to build notification request")
-+        return
-+      }
-+      UNUserNotificationCenter.current().add(request) {error in
-+        if let error = error {
-+          promise.reject("ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", "Failed to schedule notification, \(error)")
-+        } else {
-+          promise.resolve()
++    AsyncFunction("scheduleNotificationAsync") { (identifier: String, notificationSpec: [String: Any], triggerSpec: [String: Any]?, promise: Promise) in
++      do {
++        guard let request = try buildNotificationRequest(identifier: identifier, contentInput: notificationSpec, triggerInput: triggerSpec) else {
++          promise.reject("ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", "Failed to build notification request")
++          return
 +        }
++        UNUserNotificationCenter.current().add(request) {error in
++          if let error = error {
++            promise.reject("ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", "Failed to schedule notification, \(error)")
++          } else {
++            promise.resolve(identifier)
++          }
++        }
++      } catch {
++        promise.reject("ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", "Failed to schedule notification, \(error)")
 +      }
 +    }
 +
 +    AsyncFunction("getNextTriggerDateAsync") { (triggerSpec: [String: Any], promise: Promise) in
-+      guard let trigger = try? triggerFromParams(triggerSpec) else {
++      guard let appContext = appContext,
++        let trigger = try? triggerFromParams(triggerSpec, appContext: appContext) else {
 +        promise.reject("ERR_NOTIFICATIONS_INVALID_CALENDAR_TRIGGER", "Invalid trigger specification")
 +        return
 +      }
@@ -2004,30 +2073,22 @@ index ecedf7a..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
 new file mode 100644
-index 0000000..b16f71e
+index 0000000..1eba578
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,18 @@
 +import ExpoModulesCore
 +import Foundation
 +
 +public class PushTokenAppDelegateSubscriber: ExpoAppDelegateSubscriber {
-+  public static let ExpoNotificationsRegistrationResult = Notification.Name("ExpoNotificationsRegistrationResult")
++  let notificationCenterManager = NotificationCenterManager.shared
 +
 +  public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-+    NotificationCenter.default.post(
-+      name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResult,
-+      object: nil,
-+      userInfo: ["deviceToken": dataToString(deviceToken)]
-+    )
++    notificationCenterManager.didRegister(dataToString(deviceToken))
 +  }
 +
 +  public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
-+    NotificationCenter.default.post(
-+      name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResult,
-+      object: nil,
-+      userInfo: ["error": error]
-+    )
++    notificationCenterManager.didFailRegistration(error)
 +  }
 +}
 +
@@ -2036,10 +2097,10 @@ index 0000000..b16f71e
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
 new file mode 100644
-index 0000000..7b6c5b7
+index 0000000..2ab7741
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,50 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -2048,23 +2109,19 @@ index 0000000..7b6c5b7
 +
 +let onDevicePushTokenEventName = "onDevicePushToken"
 +
-+public class PushTokenModule: Module {
-+  var promiseNotYetResolved: Promise?
-+
-+  @objc
-+  public func onExpoNotificationsRegistrationResult(notification: Notification) {
-+    guard let userInfo = notification.userInfo else {
-+      return
-+    }
-+    if let error = userInfo["error"] as? (any Error) {
-+      promiseNotYetResolved?.reject(error)
-+      promiseNotYetResolved = nil
-+    } else if let deviceToken = userInfo["deviceToken"] as? String {
-+      promiseNotYetResolved?.resolve(deviceToken)
-+      promiseNotYetResolved = nil
-+      self.sendEvent(onDevicePushTokenEventName, ["devicePushToken": deviceToken])
-+    }
++public class PushTokenModule: Module, NotificationRegistrationSuccessDelegate, NotificationRegistrationFailureDelegate {
++  public func didRegister(_ deviceToken: String) {
++    promiseNotYetResolved?.resolve(deviceToken)
++    promiseNotYetResolved = nil
++    self.sendEvent(onDevicePushTokenEventName, ["devicePushToken": deviceToken])
 +  }
++
++  public func didFailRegistration(_ error: any Error) {
++    promiseNotYetResolved?.reject(error)
++    promiseNotYetResolved = nil
++  }
++
++  var promiseNotYetResolved: Promise?
 +
 +  public func definition() -> ModuleDefinition {
 +    Name("ExpoPushTokenManager")
@@ -2072,17 +2129,11 @@ index 0000000..7b6c5b7
 +    Events([onDevicePushTokenEventName])
 +
 +    OnStartObserving(onDevicePushTokenEventName) {
-+      NotificationCenter.default.addObserver(
-+        self,
-+        selector: #selector(onExpoNotificationsRegistrationResult),
-+        name: PushTokenAppDelegateSubscriber.ExpoNotificationsRegistrationResult,
-+        object: nil
-+      )
++      NotificationCenterManager.shared.addDelegate(self)
 +    }
 +
 +    OnStopObserving(onDevicePushTokenEventName) {
-+      // swiftlint:disable:next notification_center_detachment
-+      NotificationCenter.default.removeObserver(self)
++      NotificationCenterManager.shared.removeDelegate(self)
 +    }
 +
 +    AsyncFunction("getDevicePushTokenAsync") { (promise: Promise) in
