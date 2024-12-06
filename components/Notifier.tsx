@@ -4,7 +4,7 @@ import {
   Notification,
   NotificationChannel,
   NotificationResponse,
-  Subscription,
+  EventSubscription,
   addNotificationReceivedListener,
   addNotificationResponseReceivedListener,
   getExpoPushTokenAsync,
@@ -29,10 +29,11 @@ import {
   NotificationTriggerInput,
   setBadgeCountAsync,
   getBadgeCountAsync,
+  presentNotificationAsync,
 } from 'expo-notifications';
 import Constants from 'expo-constants';
 import { isDevice } from 'expo-device';
-import { defineTask } from 'expo-task-manager';
+import { defineTask, TaskManagerError } from 'expo-task-manager';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -51,7 +52,7 @@ import { router } from 'expo-router';
  * @param routeOnResponses If true, sets up response routing
  */
 export function useNotificationObserverInRootLayout(routeOnResponses: boolean) {
-  const responseListener = useRef<Subscription>();
+  const responseListener = useRef<EventSubscription>();
   usePushToken();
   useEffect(() => {
     let isMounted = true;
@@ -100,7 +101,7 @@ const STORAGE_KEY = '@notification_bg_store';
 // Background task
 // https://github.com/expo/expo/tree/main/packages/expo-notifications#handling-incoming-notifications-when-the-app-is-not-in-the-foreground-not-supported-in-expo-go
 const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
-defineTask(BACKGROUND_NOTIFICATION_TASK, ({ data, error }) => {
+defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
   console.log(
     `${Platform.OS} BACKGROUND-NOTIFICATION-TASK: App in ${AppState.currentState} state.`,
   );
@@ -112,7 +113,7 @@ defineTask(BACKGROUND_NOTIFICATION_TASK, ({ data, error }) => {
       )}`,
     );
 
-    return;
+    return null;
   }
 
   AsyncStorage.setItem(
@@ -148,8 +149,8 @@ export const Notifier = () => {
 
   const [backgroundTaskString, setBackgroundTaskString] = useState<string>('');
 
-  const notificationListener = useRef<Subscription>();
-  const responseListener = useRef<Subscription>();
+  const notificationListener = useRef<EventSubscription>();
+  const responseListener = useRef<EventSubscription>();
 
   const lastResponse = useLastNotificationResponse();
 
@@ -269,6 +270,10 @@ export const Notifier = () => {
         <Text>All scheduled notifications: {scheduledNotificationsText}</Text>
         <Text>All presented notifications: {presentedNotificationsText}</Text>
         <Text>Background task data: {backgroundTaskString}</Text>
+        <Button
+          title="presentNotification()"
+          onPress={() => presentNotification()}
+        />
         <Button
           title="incrementBadgeCount()"
           onPress={() => incrementBadgeCount()}
@@ -680,5 +685,18 @@ const clearBadgeCount: () => Promise<void> = async () => {
     await setBadgeCountAsync(0);
   } catch (e) {
     console.log(`Badge count error: ${e}`);
+  }
+};
+
+const presentNotification: () => Promise<void> = async () => {
+  const date = new Date();
+  try {
+    await presentNotificationAsync({
+      title: "You've got mail! 📬",
+      body: `Presented a notification: ${date.toLocaleString()}`,
+      data: { data: 'goes here', test: { test1: 'more data' } },
+    });
+  } catch (e) {
+    console.log(`Presentation error: ${e}`);
   }
 };
