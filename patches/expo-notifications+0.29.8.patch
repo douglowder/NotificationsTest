@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-notifications/expo-module.config.json b/node_modules/expo-notifications/expo-module.config.json
-index 2c76073..ea22fd1 100644
+index 2c76073..0661a01 100644
 --- a/node_modules/expo-notifications/expo-module.config.json
 +++ b/node_modules/expo-notifications/expo-module.config.json
 @@ -1,6 +1,10 @@
@@ -7,7 +7,7 @@ index 2c76073..ea22fd1 100644
    "name": "expo-notifications",
    "platforms": ["ios", "android"],
 +  "ios": {
-+    "modules": ["BadgeModule", "ServerRegistrationModule", "PushTokenModule", "SchedulerModule"],
++    "modules": ["BadgeModule", "ServerRegistrationModule", "PushTokenModule", "SchedulerModule", "PresentationModule"],
 +    "appDelegateSubscribers": ["PushTokenAppDelegateSubscriber"]
 +  },
    "android": {
@@ -209,13 +209,34 @@ index 53ec405..0000000
 -
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
 new file mode 100644
-index 0000000..1968f00
+index 0000000..d77d762
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,143 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
++
++struct NotificationRequestRecord: Record {
++  @Field
++  var title: String?
++  @Field
++  var subtitle: String?
++  @Field
++  var body: String?
++  @Field
++  var launchImageName: String?
++  @Field
++  var badge: Int?
++  @Field
++  var userInfo: [String: Any]?
++  @Field
++  var categoryIdentifier: String?
++  @Field
++  var sound: Either<String, Bool>?
++  @Field
++  var attachments: [[String: Any]]?
++}
 +
 +@objc(EXNotificationBuilder)
 +public class NotificationBuilder: NSObject {
@@ -678,66 +699,357 @@ index 0000000..4babf65
 +}
 +
 +@end
-diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m
-index 8410fa4..9c67fad 100644
---- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m
-+++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m
-@@ -2,17 +2,21 @@
- 
- #import <EXNotifications/EXNotificationPresentationModule.h>
- 
--#import <EXNotifications/EXNotificationBuilder.h>
- #import <EXNotifications/EXNotificationSerializer.h>
- #import <EXNotifications/EXNotificationCenterDelegate.h>
- 
--@interface EXNotificationPresentationModule ()
-+#if __has_include(<EXNotifications/EXNotifications-Swift.h>)
-+#import <EXNotifications/EXNotifications-Swift.h>
-+#else
-+#import "EXNotifications-Swift.h"
-+#endif
- 
--@property (nonatomic, weak) id<EXNotificationBuilder> notificationBuilder;
-+@interface EXNotificationPresentationModule ()
- 
- // Remove once presentNotificationAsync is removed
- @property (nonatomic, strong) NSCountedSet<NSString *> *presentedNotifications;
- @property (nonatomic, weak) id<EXNotificationCenterDelegate> notificationCenterDelegate;
-+@property (nonatomic, strong) EXNotificationBuilder *builder;
- 
- @end
- 
-@@ -25,6 +29,7 @@ EX_EXPORT_MODULE(ExpoNotificationPresenter);
- {
-   if (self = [super init]) {
-     _presentedNotifications = [NSCountedSet set];
-+    self.builder = [EXNotificationBuilder new];
-   }
-   return self;
- }
-@@ -38,7 +43,12 @@ EX_EXPORT_METHOD_AS(presentNotificationAsync,
-                     resolve:(EXPromiseResolveBlock)resolve
-                     reject:(EXPromiseRejectBlock)reject)
- {
--  UNNotificationContent *content = [_notificationBuilder notificationContentFromRequest:notificationSpec];
-+  NSError *error = nil;
-+  UNNotificationContent *content = [self.builder notificationContentFromRequest:notificationSpec error:&error];
-+  if (error) {
-+    NSString *message = [NSString stringWithFormat:@"Notification could not have been presented: %@", error.description];
-+    reject(@"ERR_NOTIF_PRESENT", message, error);
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift
+new file mode 100644
+index 0000000..f46ccef
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift
+@@ -0,0 +1,107 @@
++import ExpoModulesCore
++import Foundation
++
++public protocol NotificationsPresentationDelegate {
++  func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void)
++}
++
++public protocol NotificationsResponseDelegate {
++  func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void)
++}
++public protocol NotificationsSettingsDelegate {
++  func openSettings(_ notification: UNNotification?)
++}
++
++class NotificationsListener: Equatable, Hashable {
++  static func == (lhs: NotificationsListener, rhs: NotificationsListener) -> Bool {
++    return lhs.identifier == rhs.identifier
 +  }
-   UNNotificationTrigger *trigger = nil;
-   UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:identifier content:content trigger:trigger];
-   [_presentedNotifications addObject:identifier];
-@@ -86,8 +96,6 @@ EX_EXPORT_METHOD_AS(dismissAllNotificationsAsync,
- 
- - (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry
- {
++  
++  let identifier: String = UUID().uuidString
++  let delegate: AnyObject?
++
++  init (delegate: AnyObject) {
++    self.delegate = delegate
++  }
++
++  func hash(into hasher: inout Hasher) {
++    hasher.combine(identifier.hashValue)
++  }
++
++}
++
++public class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate {
++  public static let shared = NotificationCenterDelegate()
++
++  var listeners: Set<NotificationsListener> = []
++  var pendingResponses: [UNNotificationResponse] = []
++  let userNotificationCenter: UNUserNotificationCenter = UNUserNotificationCenter.current()
++
++  private override init() {
++    super.init()
++    if UNUserNotificationCenter.current().delegate != nil {
++      NSLog("[expo-notifications] EXNotificationCenterDelegate encountered already present delegate of UNUserNotificationCenter. EXNotificationCenterDelegate will not overwrite the value not to break other features of your app.  In return, expo-notifications may not work properly.  To fix this problem either remove setting of the second delegate  or set the delegate to an instance of EXNotificationCenterDelegate manually afterwards.")
++      return
++    }
++    UNUserNotificationCenter.current().delegate = self
++  }
++
++  public func addDelegate(_ delegate: AnyObject) {
++    listeners.insert(NotificationsListener(delegate: delegate))
++    if let delegate = delegate as? NotificationsResponseDelegate {
++      for pendingResponse in pendingResponses {
++        delegate.didReceive(pendingResponse, completionHandler: {})
++      }
++      pendingResponses.removeAll()
++    }
++  }
++
++  @objc public func removeDelegate(_ delegate: AnyObject) {
++    var listenerToRemove: NotificationsListener?
++    for listener in listeners {
++      if listener.delegate === delegate {
++        listenerToRemove = listener
++      }
++    }
++    if let listenerToRemove = listenerToRemove {
++      listeners.remove(listenerToRemove)
++    }
++  }
++
++  // MARK: - UNUserNotificationCenterDelegate
++
++  public func userNotificationCenter(
++    _ center: UNUserNotificationCenter,
++    willPresent notification: UNNotification,
++    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
++  ) {
++    for listener in listeners {
++      if let delegate = listener.delegate as? NotificationsPresentationDelegate {
++        delegate.willPresent(notification, completionHandler: completionHandler)
++      }
++    }
++    completionHandler([])
++  }
++
++  public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
++    var handled = false
++    for listener in listeners {
++      if let delegate = listener.delegate as? NotificationsResponseDelegate {
++        delegate.didReceive(response, completionHandler: completionHandler)
++      }
++      handled = true
++    }
++    if !handled {
++      pendingResponses.append(response)
++    }
++    completionHandler()
++  }
++
++  public func userNotificationCenter(_ center: UNUserNotificationCenter, openSettingsFor notification: UNNotification?) {
++    for listener in listeners {
++      if let delegate = listener.delegate as? NotificationsSettingsDelegate {
++        delegate.openSettings(notification)
++      }
++    }
++  }
++}
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.h
+deleted file mode 100644
+index f0f3dbd..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.h
++++ /dev/null
+@@ -1,13 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXExportedModule.h>
+-#import <ExpoModulesCore/EXModuleRegistryConsumer.h>
+-#import <EXNotifications/EXNotificationsDelegate.h>
+-
+-@interface EXNotificationPresentationModule : EXExportedModule <EXModuleRegistryConsumer, EXNotificationsDelegate>
+-
+-- (NSArray * _Nonnull)serializeNotifications:(NSArray<UNNotification *> * _Nonnull)notifications;
+-
+-- (void)dismissNotificationWithIdentifier:(NSString *)identifier resolve:(EXPromiseResolveBlock)resolve reject:(EXPromiseRejectBlock)reject;
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m
+deleted file mode 100644
+index 8410fa4..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.m
++++ /dev/null
+@@ -1,124 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXNotificationPresentationModule.h>
+-
+-#import <EXNotifications/EXNotificationBuilder.h>
+-#import <EXNotifications/EXNotificationSerializer.h>
+-#import <EXNotifications/EXNotificationCenterDelegate.h>
+-
+-@interface EXNotificationPresentationModule ()
+-
+-@property (nonatomic, weak) id<EXNotificationBuilder> notificationBuilder;
+-
+-// Remove once presentNotificationAsync is removed
+-@property (nonatomic, strong) NSCountedSet<NSString *> *presentedNotifications;
+-@property (nonatomic, weak) id<EXNotificationCenterDelegate> notificationCenterDelegate;
+-
+-@end
+-
+-@implementation EXNotificationPresentationModule
+-
+-EX_EXPORT_MODULE(ExpoNotificationPresenter);
+-
+-// Remove once presentNotificationAsync is removed
+-- (instancetype)init
+-{
+-  if (self = [super init]) {
+-    _presentedNotifications = [NSCountedSet set];
+-  }
+-  return self;
+-}
+-
+-# pragma mark - Exported methods
+-
+-// Remove once presentNotificationAsync is removed
+-EX_EXPORT_METHOD_AS(presentNotificationAsync,
+-                    presentNotificationWithIdentifier:(NSString *)identifier
+-                    notification:(NSDictionary *)notificationSpec
+-                    resolve:(EXPromiseResolveBlock)resolve
+-                    reject:(EXPromiseRejectBlock)reject)
+-{
+-  UNNotificationContent *content = [_notificationBuilder notificationContentFromRequest:notificationSpec];
+-  UNNotificationTrigger *trigger = nil;
+-  UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:identifier content:content trigger:trigger];
+-  [_presentedNotifications addObject:identifier];
+-  __weak EXNotificationPresentationModule *weakSelf = self;
+-  [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request withCompletionHandler:^(NSError * _Nullable error) {
+-    if (error) {
+-      // If there was no error, willPresentNotification: callback will remove the identifier from the set
+-      [weakSelf.presentedNotifications removeObject:identifier];
+-      NSString *message = [NSString stringWithFormat:@"Notification could not have been presented: %@", error.description];
+-      reject(@"ERR_NOTIF_PRESENT", message, error);
+-    } else {
+-      resolve(identifier);
+-    }
+-  }];
+-}
+-
+-EX_EXPORT_METHOD_AS(getPresentedNotificationsAsync,
+-                    getPresentedNotificationsAsyncWithResolve:(EXPromiseResolveBlock)resolve
+-                    reject:(EXPromiseRejectBlock)reject)
+-{
+-  [[UNUserNotificationCenter currentNotificationCenter] getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> * _Nonnull notifications) {
+-    resolve([self serializeNotifications:notifications]);
+-  }];
+-}
+-
+-
+-EX_EXPORT_METHOD_AS(dismissNotificationAsync,
+-                    dismissNotificationWithIdentifier:(NSString *)identifier
+-                    resolve:(EXPromiseResolveBlock)resolve
+-                    reject:(EXPromiseRejectBlock)reject)
+-{
+-  [[UNUserNotificationCenter currentNotificationCenter] removeDeliveredNotificationsWithIdentifiers:@[identifier]];
+-  resolve(nil);
+-}
+-
+-EX_EXPORT_METHOD_AS(dismissAllNotificationsAsync,
+-                    dismissAllNotificationsWithResolver:(EXPromiseResolveBlock)resolve
+-                    reject:(EXPromiseRejectBlock)reject)
+-{
+-  [[UNUserNotificationCenter currentNotificationCenter] removeAllDeliveredNotifications];
+-  resolve(nil);
+-}
+-
+-# pragma mark - EXModuleRegistryConsumer
+-
+-- (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry
+-{
 -  _notificationBuilder = [moduleRegistry getModuleImplementingProtocol:@protocol(EXNotificationBuilder)];
 -
-   // Remove once presentNotificationAsync is removed
-   id<EXNotificationCenterDelegate> notificationCenterDelegate = (id<EXNotificationCenterDelegate>)[moduleRegistry getSingletonModuleForName:@"NotificationCenterDelegate"];
-   [notificationCenterDelegate addDelegate:self];
+-  // Remove once presentNotificationAsync is removed
+-  id<EXNotificationCenterDelegate> notificationCenterDelegate = (id<EXNotificationCenterDelegate>)[moduleRegistry getSingletonModuleForName:@"NotificationCenterDelegate"];
+-  [notificationCenterDelegate addDelegate:self];
+-}
+-
+-// Remove once presentNotificationAsync is removed
+-# pragma mark - EXNotificationsDelegate
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
+-{
+-  UNNotificationPresentationOptions presentationOptions = UNNotificationPresentationOptionNone;
+-
+-  NSString *identifier = notification.request.identifier;
+-  if ([_presentedNotifications containsObject:identifier]) {
+-    [_presentedNotifications removeObject:identifier];
+-    // TODO(iOS 14): use UNNotificationPresentationOptionList and UNNotificationPresentationOptionBanner
+-    presentationOptions = UNNotificationPresentationOptionSound | UNNotificationPresentationOptionAlert | UNNotificationPresentationOptionBadge;
+-  }
+-
+-  completionHandler(presentationOptions);
+-}
+-
+-# pragma mark - Helpers
+-
+-- (NSArray * _Nonnull)serializeNotifications:(NSArray<UNNotification *> * _Nonnull)notifications
+-{
+-  NSMutableArray *serializedNotifications = [NSMutableArray new];
+-  for (UNNotification *notification in notifications) {
+-    [serializedNotifications addObject:[EXNotificationSerializer serializedNotification:notification]];
+-  }
+-  return serializedNotifications;
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
+new file mode 100644
+index 0000000..4dd5951
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
+@@ -0,0 +1,83 @@
++//  Copyright © 2024 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++import UIKit
++import MachO
++
++public class PresentationModule: Module, NotificationsPresentationDelegate {
++  let builder = NotificationBuilder()
++  var presentedNotifications: Set<String> = []
++
++  public func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
++    let identifier = notification.request.identifier
++    if presentedNotifications.contains(identifier) {
++      presentedNotifications.remove(identifier)
++      completionHandler([.badge, .sound, .banner]) // .alert is deprecated
++    } else {
++      completionHandler([])
++    }
++  }
++
++  @objc
++  public func onExpoNotificationsPresentationResult(notification: Notification) {
++
++  }
++
++  public func definition() -> ModuleDefinition {
++    Name("ExpoNotificationPresenter")
++
++    OnStartObserving {
++      NotificationCenterDelegate.shared.addDelegate(self)
++    }
++
++    OnStopObserving {
++      NotificationCenterDelegate.shared.removeDelegate(self)
++    }
++
++    AsyncFunction("presentNotificationAsync") { (identifier: String, notificationSpec: [String: Any], promise: Promise) in
++      do {
++        let content = try builder.content(notificationSpec)
++        var request: UNNotificationRequest?
++        try EXNotificationObjcWrapper.tryExecute {
++          request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
++        }
++        guard let request = request else {
++          promise.reject("ERR_NOTIF_PRESENT", "Notification could not be presented")
++          return
++        }
++        presentedNotifications.insert(identifier)
++        UNUserNotificationCenter.current().add(request) { error in
++          if let error {
++            promise.reject("ERR_NOTIF_PRESENT", error.localizedDescription)
++          } else {
++            promise.resolve()
++          }
++        }
++      } catch {
++        promise.reject("ERR_NOTIF_PRESENT", error.localizedDescription)
++      }
++    }
++    .runOnQueue(.main)
++
++    AsyncFunction("getPresentedNotificationsAsync") { (promise: Promise) in
++      UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
++        promise.resolve(self.serializeNotifications(notifications))
++      }
++    }
++
++    AsyncFunction("dismissNotificationAsync") { (identifier: String) in
++      UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
++    }
++
++    AsyncFunction("dismissAllNotificationsAsync") {
++      UNUserNotificationCenter.current().removeAllDeliveredNotifications()
++    }
++
++  }
++
++  func serializeNotifications(_ notifications: [UNNotification]) -> [[AnyHashable: Any]] {
++    return notifications.map { notification in
++      return EXNotificationSerializer.serializedNotification(notification)
++    }
++  }
++}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/EXNotificationSchedulerModule.h
 deleted file mode 100644
 index a7fff4c..0000000
@@ -1052,10 +1364,10 @@ index 49e7453..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
 new file mode 100644
-index 0000000..9528351
+index 0000000..d11b21c
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,285 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1090,6 +1402,31 @@ index 0000000..9528351
 +  "weekOfYear": .weekOfYear,
 +  "weekdayOrdinal": .weekdayOrdinal
 +]
++
++struct CalendarTriggerRecord: Record {
++  @Field
++  var year: Int?
++  @Field
++  var month: Int?
++  @Field
++  var day: Int?
++  @Field
++  var hour: Int?
++  @Field
++  var minute: Int?
++  @Field
++  var second: Int?
++  @Field
++  var weekday: Int?
++  @Field
++  var weekOfMonth: Int?
++  @Field
++  var weekOfYear: Int?
++  @Field
++  var weekdayOrdinal: Int?
++  @Field
++  var timezone: String?
++}
 +
 +struct TimeIntervalTriggerRecord: Record {
 +  @Field
@@ -1195,14 +1532,20 @@ index 0000000..9528351
 +      return trigger
 +    case yearlyNotificationTriggerType:
 +      let yearlyTrigger = try YearlyTriggerRecord(from: params, appContext: appContext)
-+      let dateComponents: DateComponents = DateComponents(month: yearlyTrigger.month, day: yearlyTrigger.day, hour: yearlyTrigger.hour, minute: yearlyTrigger.minute)
++      let dateComponents: DateComponents = DateComponents(
++        month: yearlyTrigger.month,
++        day: yearlyTrigger.day,
++        hour: yearlyTrigger.hour,
++        minute: yearlyTrigger.minute
++      )
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
 +        trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 +      }
 +      return trigger
 +    case calendarNotificationTriggerType:
-+      let dateComponents: DateComponents = dateComponentsFrom(params) ?? DateComponents()
++      let calendarTrigger = try CalendarTriggerRecord(from: params, appContext: appContext)
++      let dateComponents: DateComponents = dateComponentsFrom(calendarTrigger) ?? DateComponents()
 +      let repeats: Bool = (try? params.verifiedProperty(notificationTriggerRepeatsKey, type: Bool.self)) ?? false
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
@@ -1214,16 +1557,16 @@ index 0000000..9528351
 +    }
 +  }
 +
-+  func dateComponentsFrom(_ params: [String: Any]) -> DateComponents? {
++  func dateComponentsFrom(_ calendarTrigger: CalendarTriggerRecord) -> DateComponents? {
 +    var dateComponents = DateComponents()
 +    // TODO: Verify that DoW matches JS getDay()
 +    dateComponents.calendar = Calendar.init(identifier: .iso8601)
-+    if let timeZone = try? params.verifiedProperty(calendarNotificationTriggerTimezoneKey, type: String.self) {
++    if let timeZone = calendarTrigger.timezone {
 +      dateComponents.timeZone = TimeZone(identifier: timeZone)
 +    }
 +    dateComponentsMatchMap.keys.forEach { key in
 +      let calendarComponent = dateComponentsMatchMap[key] ?? .day
-+      if let value = try? params.verifiedProperty(key, type: Int.self) {
++      if let value = calendarTrigger.toDictionary()[key] as? Int {
 +        dateComponents.setValue(value, for: calendarComponent)
 +      }
 +    }
