@@ -209,10 +209,10 @@ index 53ec405..0000000
 -
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
 new file mode 100644
-index 0000000..d77d762
+index 0000000..3ab6b0a
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Building/NotificationBuilder.swift
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,154 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -233,59 +233,70 @@ index 0000000..d77d762
 +  @Field
 +  var categoryIdentifier: String?
 +  @Field
-+  var sound: Either<String, Bool>?
++  var sound: Either<Bool, String>?
 +  @Field
 +  var attachments: [[String: Any]]?
++  @Field
++  var interruptionLevel: String?
 +}
 +
 +@objc(EXNotificationBuilder)
 +public class NotificationBuilder: NSObject {
++  var appContext: AppContext
++  required init(appContext: AppContext) {
++    self.appContext = appContext
++  }
++  
 +  @objc(notificationContentFromRequest:error:)
 +  public func content(_ request: [String: Any]) throws -> UNMutableNotificationContent {
 +    let content = UNMutableNotificationContent()
++    let request = try NotificationRequestRecord(from: request, appContext: appContext)
 +
-+    if let title: String = try? request.verifiedProperty("title", type: String.self) {
++    if let title = request.title {
 +      content.title = title
 +    }
 +
-+    if let subtitle: String = try? request.verifiedProperty("subtitle", type: String.self) {
++    if let subtitle = request.subtitle {
 +      content.subtitle = subtitle
 +    }
 +
-+    if let body: String = try? request.verifiedProperty("body", type: String.self) {
++    if let body = request.body {
 +      content.body = body
 +    }
 +
-+    if let launchImageName: String = try? request.verifiedProperty("launchImageName", type: String.self) {
++    if let launchImageName = request.launchImageName {
 +      content.launchImageName = launchImageName
 +    }
 +
-+    if let badge = try? request.verifiedProperty("badge", type: Int.self) {
-+      // swiftlint:disable:next legacy_objc_type
++    if let badge = request.badge {
 +      content.badge = NSNumber.init(value: badge)
 +    }
 +
-+    if let userInfo: [String: Any] = try? request.verifiedProperty("userInfo", type: [String: Any].self) {
++    if let userInfo = request.userInfo {
 +      content.userInfo = userInfo
 +    }
 +
-+    if let categoryIdentifier: String = try? request.verifiedProperty("categoryIdentifier", type: String.self) {
++    if let categoryIdentifier = request.categoryIdentifier {
 +      content.categoryIdentifier = categoryIdentifier
 +    }
 +
-+    if let sound = request["sound"] as? Bool {
-+      content.sound = sound ? .default : .none
-+    } else if let soundName = request["sound"] as? String {
-+      if soundName == "default" {
-+        content.sound = UNNotificationSound.default
-+      } else if soundName == "defaultCritical" {
-+        content.sound = UNNotificationSound.defaultCritical
-+      } else {
-+        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundName))
++
++    if let sound = request.sound {
++      if let soundBool = try? sound.as(Bool.self) {
++        content.sound = soundBool ? .default : .none
++      } else if let soundName = try? sound.as(String.self) {
++        if soundName == "default" {
++          content.sound = UNNotificationSound.default
++        } else if soundName == "defaultCritical" {
++          content.sound = UNNotificationSound.defaultCritical
++        } else {
++          content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundName))
++        }
 +      }
 +    }
++
 +    var attachments: [UNNotificationAttachment] = []
-+    if let attachmentsArray = request["attachments"] as? [[String: Any]] {
++    if let attachmentsArray = request.attachments {
 +      for attachmentObject in attachmentsArray {
 +        if let attachment: UNNotificationAttachment = attachment(attachmentObject) {
 +          attachments.append(attachment)
@@ -293,7 +304,7 @@ index 0000000..d77d762
 +      }
 +    }
 +    content.attachments = attachments
-+    if let interruptionLevel = request["interruptionLevel"] as? String {
++    if let interruptionLevel = request.interruptionLevel {
 +      content.interruptionLevel = deserializeInterruptionLevel(interruptionLevel)
 +    }
 +
@@ -699,6 +710,44 @@ index 0000000..4babf65
 +}
 +
 +@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NSDictionary+EXNotificationsVerifyingClass.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NSDictionary+EXNotificationsVerifyingClass.h
+deleted file mode 100644
+index 802a40e..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NSDictionary+EXNotificationsVerifyingClass.h
++++ /dev/null
+@@ -1,7 +0,0 @@
+-#import <Foundation/Foundation.h>
+-
+-@interface NSDictionary (EXNotificationsVerifyingClass)
+-
+-- (id)objectForKey:(id)aKey verifyingClass:(__unsafe_unretained Class)klass;
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NSDictionary+EXNotificationsVerifyingClass.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NSDictionary+EXNotificationsVerifyingClass.m
+deleted file mode 100644
+index 8671d67..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NSDictionary+EXNotificationsVerifyingClass.m
++++ /dev/null
+@@ -1,19 +0,0 @@
+-#import <EXNotifications/NSDictionary+EXNotificationsVerifyingClass.h>
+-
+-static NSString * const invalidValueExceptionName = @"Value of invalid class encountered";
+-static NSString * const invalidValueClassReasonFormat = @"Value under key `%@` is of class %@, while %@ was expected.";
+-
+-@implementation NSDictionary (EXNotificationsVerifyingClass)
+-
+-- (id)objectForKey:(id)aKey verifyingClass:(__unsafe_unretained Class)klass
+-{
+-  id obj = [self objectForKey:aKey];
+-  if (!obj || [obj isKindOfClass:klass]) {
+-    return obj;
+-  }
+-
+-  NSString *reason = [NSString stringWithFormat:invalidValueClassReasonFormat, aKey, NSStringFromClass([obj class]), NSStringFromClass(klass)];
+-  @throw [NSException exceptionWithName:invalidValueExceptionName reason:reason userInfo:nil];
+-}
+-
+-@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift
 new file mode 100644
 index 0000000..f46ccef
@@ -963,10 +1012,10 @@ index 8410fa4..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
 new file mode 100644
-index 0000000..4dd5951
+index 0000000..a2378e7
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,91 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -974,7 +1023,7 @@ index 0000000..4dd5951
 +import MachO
 +
 +public class PresentationModule: Module, NotificationsPresentationDelegate {
-+  let builder = NotificationBuilder()
++  var builder: NotificationBuilder?
 +  var presentedNotifications: Set<String> = []
 +
 +  public func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -996,7 +1045,10 @@ index 0000000..4dd5951
 +    Name("ExpoNotificationPresenter")
 +
 +    OnStartObserving {
-+      NotificationCenterDelegate.shared.addDelegate(self)
++      if let appContext = self.appContext {
++        self.builder = NotificationBuilder(appContext: appContext)
++        NotificationCenterDelegate.shared.addDelegate(self)
++      }
 +    }
 +
 +    OnStopObserving {
@@ -1005,6 +1057,11 @@ index 0000000..4dd5951
 +
 +    AsyncFunction("presentNotificationAsync") { (identifier: String, notificationSpec: [String: Any], promise: Promise) in
 +      do {
++        guard let builder = self.builder else {
++          let error = NSError(domain: "ExpoNotificationPresenter", code: 0, userInfo: nil)
++          promise.reject("ERR_NOTIF_PRESENT", error.localizedDescription)
++          return
++        }
 +        let content = try builder.content(notificationSpec)
 +        var request: UNNotificationRequest?
 +        try EXNotificationObjcWrapper.tryExecute {
@@ -1364,10 +1421,10 @@ index 49e7453..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
 new file mode 100644
-index 0000000..d11b21c
+index 0000000..b21bc90
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Scheduling/SchedulerModule.swift
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,297 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1426,6 +1483,8 @@ index 0000000..d11b21c
 +  var weekdayOrdinal: Int?
 +  @Field
 +  var timezone: String?
++  @Field
++  var repeats: Bool?
 +}
 +
 +struct TimeIntervalTriggerRecord: Record {
@@ -1477,7 +1536,7 @@ index 0000000..d11b21c
 +}
 +
 +public class SchedulerModule: Module {
-+  let builder: NotificationBuilder = NotificationBuilder()
++  var builder: NotificationBuilder?
 +
 +  func triggerFromParams(_ params: [String: Any]?) throws -> UNNotificationTrigger? {
 +    guard let params = params,
@@ -1546,7 +1605,7 @@ index 0000000..d11b21c
 +    case calendarNotificationTriggerType:
 +      let calendarTrigger = try CalendarTriggerRecord(from: params, appContext: appContext)
 +      let dateComponents: DateComponents = dateComponentsFrom(calendarTrigger) ?? DateComponents()
-+      let repeats: Bool = (try? params.verifiedProperty(notificationTriggerRepeatsKey, type: Bool.self)) ?? false
++      let repeats = calendarTrigger.repeats ?? false
 +      var trigger: UNNotificationTrigger?
 +      try EXNotificationObjcWrapper.tryExecute {
 +        trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: repeats)
@@ -1586,11 +1645,21 @@ index 0000000..d11b21c
 +    contentInput: [String: Any],
 +    triggerInput: [String: Any]
 +  ) throws -> UNNotificationRequest? {
++    guard let builder else {
++      throw Exception(name: "ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE", description: "Notification builder not initialized")
++    }
 +    return try UNNotificationRequest(identifier: identifier, content: builder.content(contentInput), trigger: triggerFromParams(triggerInput))
 +  }
 +
 +  public func definition() -> ModuleDefinition {
 +    Name("ExpoNotificationScheduler")
++
++    OnStartObserving {
++      guard let appContext = self.appContext else {
++        return
++      }
++      self.builder = NotificationBuilder(appContext: appContext)
++    }
 +
 +    AsyncFunction("getAllScheduledNotificationsAsync") { (promise: Promise) in
 +      UNUserNotificationCenter.current().getPendingNotificationRequests { (requests: [UNNotificationRequest]) in
@@ -1651,27 +1720,6 @@ index 0000000..d11b21c
 +      }
 +      promise.reject("ERR_NOTIFICATIONS_INVALID_CALENDAR_TRIGGER", "It is not possible to get next trigger date for triggers other than calendar-based. Provided trigger resulted in \(type(of: trigger)) trigger.")
 +    }
-+  }
-+}
-diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift
-new file mode 100644
-index 0000000..8f41ee9
---- /dev/null
-+++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/VerifiedPropertyExtension.swift
-@@ -0,0 +1,15 @@
-+import ExpoModulesCore
-+
-+public extension [String: Any] {
-+  func verifiedProperty<T>(_ key: String, type: T.Type) throws -> T? {
-+    let request = self
-+    if request[key] == nil {
-+      return nil
-+    }
-+    guard let value = request[key] as? T else {
-+      let exceptionName = "Value under key \(key) is not a valid \(type)"
-+      throw Exception(name: exceptionName, description: "")
-+    }
-+    return value
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenListener.h b/node_modules/expo-notifications/ios/EXNotifications/PushToken/EXPushTokenListener.h
