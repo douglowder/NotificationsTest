@@ -750,60 +750,48 @@ index 8671d67..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift
 new file mode 100644
-index 0000000..f46ccef
+index 0000000..3d9b695
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterDelegate.swift
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,93 @@
 +import ExpoModulesCore
 +import Foundation
 +
-+public protocol NotificationsPresentationDelegate {
++public protocol NotificationsPresentationDelegate: AnyObject {
 +  func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void)
 +}
 +
-+public protocol NotificationsResponseDelegate {
++public protocol NotificationsResponseDelegate: AnyObject {
 +  func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void)
 +}
-+public protocol NotificationsSettingsDelegate {
++public protocol NotificationsSettingsDelegate: AnyObject {
 +  func openSettings(_ notification: UNNotification?)
-+}
-+
-+class NotificationsListener: Equatable, Hashable {
-+  static func == (lhs: NotificationsListener, rhs: NotificationsListener) -> Bool {
-+    return lhs.identifier == rhs.identifier
-+  }
-+  
-+  let identifier: String = UUID().uuidString
-+  let delegate: AnyObject?
-+
-+  init (delegate: AnyObject) {
-+    self.delegate = delegate
-+  }
-+
-+  func hash(into hasher: inout Hasher) {
-+    hasher.combine(identifier.hashValue)
-+  }
-+
 +}
 +
 +public class NotificationCenterDelegate: NSObject, UNUserNotificationCenterDelegate {
 +  public static let shared = NotificationCenterDelegate()
 +
-+  var listeners: Set<NotificationsListener> = []
++  var delegates: [AnyObject] = []
 +  var pendingResponses: [UNNotificationResponse] = []
 +  let userNotificationCenter: UNUserNotificationCenter = UNUserNotificationCenter.current()
 +
 +  private override init() {
 +    super.init()
 +    if UNUserNotificationCenter.current().delegate != nil {
-+      NSLog("[expo-notifications] EXNotificationCenterDelegate encountered already present delegate of UNUserNotificationCenter. EXNotificationCenterDelegate will not overwrite the value not to break other features of your app.  In return, expo-notifications may not work properly.  To fix this problem either remove setting of the second delegate  or set the delegate to an instance of EXNotificationCenterDelegate manually afterwards.")
++      NSLog(
++        "[expo-notifications] EXNotificationCenterDelegate encountered already present delegate of " +
++        "UNUserNotificationCenter. EXNotificationCenterDelegate will not overwrite the value not to break other " +
++        "features of your app.  In return, expo-notifications may not work properly.  To fix this problem either " +
++        "remove setting of the second delegate, or set the delegate to an instance of EXNotificationCenterDelegate " +
++        "manually afterwards."
++      )
 +      return
 +    }
 +    UNUserNotificationCenter.current().delegate = self
 +  }
 +
 +  public func addDelegate(_ delegate: AnyObject) {
-+    listeners.insert(NotificationsListener(delegate: delegate))
++    delegates.append(delegate)
 +    if let delegate = delegate as? NotificationsResponseDelegate {
 +      for pendingResponse in pendingResponses {
 +        delegate.didReceive(pendingResponse, completionHandler: {})
@@ -813,14 +801,8 @@ index 0000000..f46ccef
 +  }
 +
 +  @objc public func removeDelegate(_ delegate: AnyObject) {
-+    var listenerToRemove: NotificationsListener?
-+    for listener in listeners {
-+      if listener.delegate === delegate {
-+        listenerToRemove = listener
-+      }
-+    }
-+    if let listenerToRemove = listenerToRemove {
-+      listeners.remove(listenerToRemove)
++    if let index = delegates.firstIndex(where: { $0 === delegate }) {
++      delegates.remove(at: index)
 +    }
 +  }
 +
@@ -831,18 +813,22 @@ index 0000000..f46ccef
 +    willPresent notification: UNNotification,
 +    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
 +  ) {
-+    for listener in listeners {
-+      if let delegate = listener.delegate as? NotificationsPresentationDelegate {
++    for delegate in delegates {
++      if let delegate = delegate as? NotificationsPresentationDelegate {
 +        delegate.willPresent(notification, completionHandler: completionHandler)
 +      }
 +    }
 +    completionHandler([])
 +  }
 +
-+  public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
++  public func userNotificationCenter(
++    _ center: UNUserNotificationCenter,
++    didReceive response: UNNotificationResponse,
++    withCompletionHandler completionHandler: @escaping () -> Void
++  ) {
 +    var handled = false
-+    for listener in listeners {
-+      if let delegate = listener.delegate as? NotificationsResponseDelegate {
++    for delegate in delegates {
++      if let delegate = delegate as? NotificationsResponseDelegate {
 +        delegate.didReceive(response, completionHandler: completionHandler)
 +      }
 +      handled = true
@@ -854,8 +840,8 @@ index 0000000..f46ccef
 +  }
 +
 +  public func userNotificationCenter(_ center: UNUserNotificationCenter, openSettingsFor notification: UNNotification?) {
-+    for listener in listeners {
-+      if let delegate = listener.delegate as? NotificationsSettingsDelegate {
++    for delegate in delegates {
++      if let delegate = delegate as? NotificationsSettingsDelegate {
 +        delegate.openSettings(notification)
 +      }
 +    }
