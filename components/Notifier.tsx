@@ -30,6 +30,10 @@ import {
   setBadgeCountAsync,
   getBadgeCountAsync,
   presentNotificationAsync,
+  setNotificationCategoryAsync,
+  NotificationCategory,
+  deleteNotificationCategoryAsync,
+  getNotificationCategoriesAsync,
 } from 'expo-notifications';
 import Constants from 'expo-constants';
 import { isDevice } from 'expo-device';
@@ -169,7 +173,7 @@ export const Notifier = () => {
   };
 
   useEffect(() => {
-    setNotificationChannel().then((channels) => {
+    setTestNotificationChannelAsync().then((channels) => {
       setChannels(channels);
     });
 
@@ -414,6 +418,22 @@ export const Notifier = () => {
               });
           }}
         />
+        <Button
+          title="Set test category"
+          onPress={() => setTestNotificationCategoryAsync()}
+        />
+        <Button
+          title="Delete test category"
+          onPress={() => deleteTestNotificationCategoryAsync()}
+        />
+        <Button
+          title="Get categories"
+          onPress={() => {
+            getNotificationCategoriesAsync().then((categories) =>
+              console.log(JSON.stringify(categories, null, 2)),
+            );
+          }}
+        />
       </View>
     </View>
   );
@@ -463,7 +483,9 @@ function usePushToken() {
   };
 }
 
-async function setNotificationChannel(): Promise<NotificationChannel[]> {
+async function setTestNotificationChannelAsync(): Promise<
+  NotificationChannel[]
+> {
   try {
     if (Platform.OS === 'android') {
       const value = await setNotificationChannelAsync('testApp', {
@@ -482,6 +504,24 @@ async function setNotificationChannel(): Promise<NotificationChannel[]> {
     console.log(`Error in setNotificationChannel(): ${e}`);
   }
   return [];
+}
+
+async function setTestNotificationCategoryAsync(): Promise<NotificationCategory> {
+  const category = await setNotificationCategoryAsync('testCategory', [
+    {
+      identifier: 'myButton',
+      buttonTitle: 'Press Me',
+      options: {
+        isAuthenticationRequired: false,
+        opensAppToForeground: true,
+      },
+    },
+  ]);
+  return category;
+}
+
+async function deleteTestNotificationCategoryAsync(): Promise<void> {
+  await deleteNotificationCategoryAsync('testCategory');
 }
 
 async function registerForPushNotificationsAsync() {
