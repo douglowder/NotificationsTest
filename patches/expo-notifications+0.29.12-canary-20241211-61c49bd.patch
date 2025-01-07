@@ -302,10 +302,10 @@ index 0000000..6916264
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Categories/CategoriesModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Categories/CategoriesModule.swift
 new file mode 100644
-index 0000000..929ee2a
+index 0000000..6d68423
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Categories/CategoriesModule.swift
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,166 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -352,7 +352,7 @@ index 0000000..929ee2a
 +            newCategories.insert(category)
 +          }
 +        }
-+        if (didDelete) {
++        if didDelete {
 +          UNUserNotificationCenter.current().setNotificationCategories(newCategories)
 +        }
 +        promise.resolve(didDelete)
@@ -364,14 +364,28 @@ index 0000000..929ee2a
 +    let intentIdentifiers: [String] = options?["intentIdentifiers"] as? [String] ?? []
 +    let previewPlaceholder: String? = options?["previewPlaceholder"] as? String
 +    let categorySummaryFormat: String? = options?["categorySummaryFormat"] as? String
-+    let actionsArray: [UNNotificationAction] = actions.map(actionFromParams)
++    var actionsArray: [UNNotificationAction] = []
++    actions.forEach { actionParams in
++      if let action = actionFromParams(actionParams) {
++        actionsArray.append(action)
++      }
++    }
 +    let categoryOptions: UNNotificationCategoryOptions = categoryOptionsFromParams(options)
-+    return UNNotificationCategory(identifier: id, actions: actionsArray, intentIdentifiers: intentIdentifiers, hiddenPreviewsBodyPlaceholder: previewPlaceholder, categorySummaryFormat: categorySummaryFormat, options: categoryOptions)
++    return UNNotificationCategory(
++      identifier: id,
++      actions: actionsArray,
++      intentIdentifiers: intentIdentifiers,
++      hiddenPreviewsBodyPlaceholder: previewPlaceholder,
++      categorySummaryFormat: categorySummaryFormat,
++      options: categoryOptions
++    )
 +  }
 +
-+  func actionFromParams(_ params: [String: Any]) -> UNNotificationAction {
-+    let identifier = params["identifier"] as! String
-+    let buttonTitle = params["buttonTitle"] as! String
++  func actionFromParams(_ params: [String: Any]) -> UNNotificationAction? {
++    guard let identifier = params["identifier"] as? String,
++      let buttonTitle = params["buttonTitle"] as? String else {
++      return nil
++    }
 +    var options: UNNotificationActionOptions = []
 +    if let optionsParams = params["options"] as? [String: Any] {
 +      if optionsParams["opensAppToForeground"] as? Bool ?? false {
@@ -385,7 +399,12 @@ index 0000000..929ee2a
 +      }
 +    }
 +    if let textInput = params["textInput"] as? [String: String] {
-+      return UNTextInputNotificationAction(identifier: identifier, title: buttonTitle, textInputButtonTitle: textInput["submitButtonTitle"] ?? "", textInputPlaceholder: textInput["placeholder"] ?? "")
++      return UNTextInputNotificationAction(
++        identifier: identifier,
++        title: buttonTitle,
++        textInputButtonTitle: textInput["submitButtonTitle"] ?? "",
++        textInputPlaceholder: textInput["placeholder"] ?? ""
++      )
 +    }
 +    return UNTextInputNotificationAction(identifier: identifier, title: buttonTitle, options: options)
 +  }
