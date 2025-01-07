@@ -3,17 +3,17 @@ index 36b31f9..b0046fd 100644
 --- a/ios/NotificationsTest.xcodeproj/project.pbxproj
 +++ b/ios/NotificationsTest.xcodeproj/project.pbxproj
 @@ -134,6 +134,7 @@
- 			isa = PBXNativeTarget;
  			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "NotificationsTest" */;
  			buildPhases = (
+ 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
 +				2D449F0A2D2CB3630061A464 /* SwiftLint */,
  				13B07F871A680F5B00A75B9A /* Sources */,
  				13B07F8C1A680F5B00A75B9A /* Frameworks */,
  				13B07F8E1A680F5B00A75B9A /* Resources */,
-@@ -209,6 +210,24 @@
- 			shellPath = /bin/sh;
- 			shellScript = "if [[ -f \"$PODS_ROOT/../.xcode.env\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env\"\nfi\nif [[ -f \"$PODS_ROOT/../.xcode.env.local\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.local\"\nfi\n\n# The project root by default is one level up from the ios directory\nexport PROJECT_ROOT=\"$PROJECT_DIR\"/..\n\nif [[ \"$CONFIGURATION\" = *Debug* ]]; then\n  export SKIP_BUNDLING=1\nfi\nif [[ -z \"$ENTRY_FILE\" ]]; then\n  # Set the entry JS file using the bundler's entry resolution.\n  export ENTRY_FILE=\"$(\"$NODE_BINARY\" -e \"require('expo/scripts/resolveAppEntry')\" \"$PROJECT_ROOT\" ios absolute | tail -n 1)\"\nfi\n\nif [[ -z \"$CLI_PATH\" ]]; then\n  # Use Expo CLI\n  export CLI_PATH=\"$(\"$NODE_BINARY\" --print \"require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })\")\"\nfi\nif [[ -z \"$BUNDLE_COMMAND\" ]]; then\n  # Default Expo CLI command for bundling\n  export BUNDLE_COMMAND=\"export:embed\"\nfi\n\n# Source .xcode.env.updates if it exists to allow\n# SKIP_BUNDLING to be unset if needed\nif [[ -f \"$PODS_ROOT/../.xcode.env.updates\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.updates\"\nfi\n# Source local changes to allow overrides\n# if needed\nif [[ -f \"$PODS_ROOT/../.xcode.env.local\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.local\"\nfi\n\n`\"$NODE_BINARY\" --print \"require('path').dirname(require.resolve('react-native/package.json')) + '/scripts/react-native-xcode.sh'\"`\n\n";
- 		};
+@@ -196,6 +197,24 @@
+ /* End PBXResourcesBuildPhase section */
+ 
+ /* Begin PBXShellScriptBuildPhase section */
 +		2D449F0A2D2CB3630061A464 /* SwiftLint */ = {
 +			isa = PBXShellScriptBuildPhase;
 +			buildActionMask = 2147483647;
@@ -32,6 +32,6 @@ index 36b31f9..b0046fd 100644
 +			shellPath = /bin/sh;
 +			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nswiftlint lint --config ../.swiftlint.yml ../node_modules/expo-notifications/ios\n";
 +		};
- /* End PBXShellScriptBuildPhase section */
- 
- /* Begin PBXSourcesBuildPhase section */
+ 		00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */ = {
+ 			isa = PBXShellScriptBuildPhase;
+ 			alwaysOutOfDate = 1;
