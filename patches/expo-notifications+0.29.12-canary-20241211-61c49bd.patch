@@ -302,10 +302,10 @@ index 0000000..6916264
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Categories/CategoriesModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Categories/CategoriesModule.swift
 new file mode 100644
-index 0000000..6d68423
+index 0000000..dbb4f5a
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Categories/CategoriesModule.swift
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,145 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -318,10 +318,7 @@ index 0000000..6d68423
 +
 +    AsyncFunction("getNotificationCategoriesAsync") { (promise: Promise) in
 +      UNUserNotificationCenter.current().getNotificationCategories { categories in
-+        var existingCategories: [[String: Any]] = []
-+        categories.forEach { category in
-+          existingCategories.append(self.serializeCategory(category))
-+        }
++        let existingCategories = categories.map { self.serializeCategory($0) }
 +        promise.resolve(existingCategories)
 +      }
 +    }
@@ -329,29 +326,16 @@ index 0000000..6d68423
 +    AsyncFunction("setNotificationCategoryAsync") { (identifier: String, actions: [[String: Any]], options: [String: Any]?, promise: Promise) in
 +      let newCategory = categoryFromParams(identifier, actions: actions, options: options)
 +      UNUserNotificationCenter.current().getNotificationCategories { oldcategories in
-+        var newCategories: Set<UNNotificationCategory> = Set<UNNotificationCategory>()
-+        oldcategories.forEach { category in
-+          if category.identifier != newCategory.identifier {
-+            newCategories.insert(category)
-+          }
-+        }
-+        newCategories.insert(newCategory)
++        let newCategories = Set(oldcategories.filter { $0.identifier != newCategory.identifier }.union([newCategory]))
 +        UNUserNotificationCenter.current().setNotificationCategories(newCategories)
 +        promise.resolve(self.serializeCategory(newCategory))
 +      }
 +    }
 +
 +    AsyncFunction("deleteNotificationCategoryAsync") { (identifier: String, promise: Promise) in
-+      UNUserNotificationCenter.current().getNotificationCategories { oldcategories in
-+        var newCategories: Set<UNNotificationCategory> = Set<UNNotificationCategory>()
-+        var didDelete = false
-+        oldcategories.forEach { category in
-+          if category.identifier == identifier {
-+            didDelete = true
-+          } else {
-+            newCategories.insert(category)
-+          }
-+        }
++      UNUserNotificationCenter.current().getNotificationCategories { oldCategories in
++        let newCategories = Set(oldCategories.filter { $0.identifier != identifier })
++        let didDelete = oldCategories.contains { $0.identifier == identifier }
 +        if didDelete {
 +          UNUserNotificationCenter.current().setNotificationCategories(newCategories)
 +        }
@@ -364,12 +348,7 @@ index 0000000..6d68423
 +    let intentIdentifiers: [String] = options?["intentIdentifiers"] as? [String] ?? []
 +    let previewPlaceholder: String? = options?["previewPlaceholder"] as? String
 +    let categorySummaryFormat: String? = options?["categorySummaryFormat"] as? String
-+    var actionsArray: [UNNotificationAction] = []
-+    actions.forEach { actionParams in
-+      if let action = actionFromParams(actionParams) {
-+        actionsArray.append(action)
-+      }
-+    }
++    let actionsArray = actions.compactMap { actionFromParams($0) }
 +    let categoryOptions: UNNotificationCategoryOptions = categoryOptionsFromParams(options)
 +    return UNNotificationCategory(
 +      identifier: id,
@@ -406,7 +385,7 @@ index 0000000..6d68423
 +        textInputPlaceholder: textInput["placeholder"] ?? ""
 +      )
 +    }
-+    return UNTextInputNotificationAction(identifier: identifier, title: buttonTitle, options: options)
++    return UNNotificationAction(identifier: identifier, title: buttonTitle, options: options)
 +  }
 +
 +  func categoryOptionsFromParams(_ params: [String: Any]?) -> UNNotificationCategoryOptions {
