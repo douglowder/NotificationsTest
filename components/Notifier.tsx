@@ -507,16 +507,40 @@ async function setTestNotificationChannelAsync(): Promise<
 }
 
 async function setTestNotificationCategoryAsync(): Promise<NotificationCategory> {
-  const category = await setNotificationCategoryAsync('testCategory', [
-    {
-      identifier: 'myButton',
-      buttonTitle: 'Press Me',
-      options: {
-        isAuthenticationRequired: false,
-        opensAppToForeground: true,
+  const category = await setNotificationCategoryAsync(
+    'testCategory',
+    [
+      {
+        identifier: 'myButton',
+        buttonTitle: 'Press Me',
+        options: {
+          isAuthenticationRequired: false,
+          opensAppToForeground: true,
+        },
       },
+      {
+        identifier: 'myTextInput',
+        buttonTitle: 'Enter',
+        textInput: {
+          submitButtonTitle: 'Submit',
+          placeholder: 'Enter something here',
+        },
+        options: {
+          isAuthenticationRequired: false,
+          opensAppToForeground: true,
+        },
+      },
+    ],
+    {
+      showTitle: true,
+      showSubtitle: true,
+      allowAnnouncement: true,
+      allowInCarPlay: true,
+      intentIdentifiers: ['intentOne'],
+      categorySummaryFormat: 'testing',
+      previewPlaceholder: 'preview',
     },
-  ]);
+  );
   return category;
 }
 
