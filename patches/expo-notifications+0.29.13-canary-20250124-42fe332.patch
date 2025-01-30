@@ -1,13 +1,21 @@
 diff --git a/node_modules/expo-notifications/expo-module.config.json b/node_modules/expo-notifications/expo-module.config.json
-index 2c76073..2a62ca6 100644
+index 2c76073..3e58e87 100644
 --- a/node_modules/expo-notifications/expo-module.config.json
 +++ b/node_modules/expo-notifications/expo-module.config.json
-@@ -1,6 +1,10 @@
+@@ -1,6 +1,16 @@
  {
-   "name": "expo-notifications",
-   "platforms": ["ios", "android"],
-+  "ios": {
-+    "modules": ["BadgeModule", "CategoriesModule", "ServerRegistrationModule", "PushTokenModule", "SchedulerModule", "PresentationModule"],
+-  "name": "expo-notifications",
+-  "platforms": ["ios", "android"],
++  "platforms": ["apple", "android"],
++  "apple": {
++    "modules": [
++      "BadgeModule",
++      "CategoriesModule",
++      "PresentationModule",
++      "PushTokenModule",
++      "ServerRegistrationModule",
++      "SchedulerModule"
++    ],
 +    "appDelegateSubscribers": ["PushTokenAppDelegateSubscriber"]
 +  },
    "android": {
@@ -1052,6 +1060,30 @@ index 0000000..e584c1e
 +      delegate.openSettings(notification)
 +    }
 +  }
++}
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
+new file mode 100644
+index 0000000..13206ba
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
+@@ -0,0 +1,18 @@
++import ExpoModulesCore
++import Foundation
++
++public class NotificationsAppDelegateSubscriber: ExpoAppDelegateSubscriber {
++  let notificationCenterManager = NotificationCenterManager.shared
++
++  public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
++    notificationCenterManager.didRegister(dataToString(deviceToken))
++  }
++
++  public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
++    notificationCenterManager.didFailRegistration(error)
++  }
++}
++
++private func dataToString(_ data: Data) -> String {
++  return data.map { String(format: "%02hhx", $0) }.joined()
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/EXNotificationPresentationModule.h
 deleted file mode 100644
@@ -2582,30 +2614,6 @@ index ecedf7a..0000000
 -}
 -
 -@end
-diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
-new file mode 100644
-index 0000000..1eba578
---- /dev/null
-+++ b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenAppDelegateSubscriber.swift
-@@ -0,0 +1,18 @@
-+import ExpoModulesCore
-+import Foundation
-+
-+public class PushTokenAppDelegateSubscriber: ExpoAppDelegateSubscriber {
-+  let notificationCenterManager = NotificationCenterManager.shared
-+
-+  public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-+    notificationCenterManager.didRegister(dataToString(deviceToken))
-+  }
-+
-+  public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
-+    notificationCenterManager.didFailRegistration(error)
-+  }
-+}
-+
-+private func dataToString(_ data: Data) -> String {
-+  return data.map { String(format: "%02hhx", $0) }.joined()
-+}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift b/node_modules/expo-notifications/ios/EXNotifications/PushToken/PushTokenModule.swift
 new file mode 100644
 index 0000000..22353c8
