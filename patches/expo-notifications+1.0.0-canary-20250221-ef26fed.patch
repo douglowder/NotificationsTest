@@ -1,0 +1,218 @@
+diff --git a/node_modules/expo-notifications/expo-module.config.json b/node_modules/expo-notifications/expo-module.config.json
+index a335999..9f28780 100644
+--- a/node_modules/expo-notifications/expo-module.config.json
++++ b/node_modules/expo-notifications/expo-module.config.json
+@@ -4,6 +4,7 @@
+     "modules": [
+       "BadgeModule",
+       "CategoriesModule",
++      "EmitterModule",
+       "PresentationModule",
+       "PushTokenModule",
+       "ServerRegistrationModule",
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.h
+deleted file mode 100644
+index 3590bf1..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.h
++++ /dev/null
+@@ -1,18 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXExportedModule.h>
+-#import <ExpoModulesCore/EXEventEmitter.h>
+-#import <ExpoModulesCore/EXModuleRegistryConsumer.h>
+-#import <ExpoModulesCore/EXEventEmitterService.h>
+-
+-#import <EXNotifications/EXNotificationsDelegate.h>
+-
+-static NSString * const onDidReceiveNotification = @"onDidReceiveNotification";
+-static NSString * const onDidReceiveNotificationResponse = @"onDidReceiveNotificationResponse";
+-static NSString * const onDidClearNotificationResponse = @"onDidClearNotificationResponse";
+-
+-@interface EXNotificationsEmitter : EXExportedModule <EXEventEmitter, EXModuleRegistryConsumer, EXNotificationsDelegate>
+-
+-@property (nonatomic, weak, readonly) id<EXEventEmitterService> eventEmitter;
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.m
+deleted file mode 100644
+index 7d46d62..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.m
++++ /dev/null
+@@ -1,120 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXNotificationsEmitter.h>
+-#import <EXNotifications/EXNotificationSerializer.h>
+-#import <EXNotifications/EXNotificationCenterDelegate.h>
+-
+-#import <ExpoModulesCore/EXEventEmitterService.h>
+-
+-@interface EXNotificationsEmitter ()
+-
+-@property (nonatomic, weak) id<EXNotificationCenterDelegate> notificationCenterDelegate;
+-
+-@property (nonatomic, assign) BOOL isBeingObserved;
+-@property (nonatomic, assign) BOOL isListening;
+-
+-@property (nonatomic, weak) id<EXEventEmitterService> eventEmitter;
+-
+-@end
+-
+-@implementation EXNotificationsEmitter
+-
+-EX_EXPORT_MODULE(ExpoNotificationsEmitter);
+-
+-EX_EXPORT_METHOD_AS(getLastNotificationResponseAsync,
+-                    getLastNotificationResponseAsyncWithResolver:(EXPromiseResolveBlock)resolve reject:(EXPromiseRejectBlock)reject)
+-{
+-  UNNotificationResponse* lastResponse = _notificationCenterDelegate.lastNotificationResponse;
+-  resolve(lastResponse ? [self serializedNotificationResponse:lastResponse] : [NSNull null]);
+-}
+-
+-EX_EXPORT_METHOD_AS(clearLastNotificationResponseAsync,
+-                    clearLastNotificationResponseAsyncWithResolver:(EXPromiseResolveBlock)resolve reject:(EXPromiseRejectBlock)reject)
+-{
+-  _notificationCenterDelegate.lastNotificationResponse = nil;
+-  resolve([NSNull null]);
+-}
+-
+-# pragma mark - EXModuleRegistryConsumer
+-
+-- (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry
+-{
+-  _eventEmitter = [moduleRegistry getModuleImplementingProtocol:@protocol(EXEventEmitterService)];
+-  _notificationCenterDelegate = [moduleRegistry getSingletonModuleForName:@"NotificationCenterDelegate"];
+-}
+-
+-# pragma mark - EXEventEmitter
+-
+-- (NSArray<NSString *> *)supportedEvents
+-{
+-  return @[onDidReceiveNotification, onDidReceiveNotificationResponse, onDidClearNotificationResponse];
+-}
+-
+-- (void)startObserving
+-{
+-  [self setIsBeingObserved:YES];
+-}
+-
+-- (void)stopObserving
+-{
+-  [self setIsBeingObserved:NO];
+-}
+-
+-- (void)setIsBeingObserved:(BOOL)isBeingObserved
+-{
+-  _isBeingObserved = isBeingObserved;
+-  BOOL shouldListen = _isBeingObserved;
+-  if (shouldListen && !_isListening) {
+-    [_notificationCenterDelegate addDelegate:self];
+-    _isListening = YES;
+-  } else if (!shouldListen && _isListening) {
+-    [_notificationCenterDelegate removeDelegate:self];
+-    _isListening = NO;
+-  }
+-}
+-
+-# pragma mark - EXNotificationsDelegate
+-
+-- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler
+-{
+-  // Background task execution would happen here.
+-  completionHandler(UIBackgroundFetchResultNoData);
+-}
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler
+-{
+-  _notificationCenterDelegate.lastNotificationResponse = response;
+-  [self sendEventWithName:onDidReceiveNotificationResponse body:[self serializedNotificationResponse:response]];
+-  completionHandler();
+-}
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
+-{
+-  [self sendEventWithName:onDidReceiveNotification body:[self serializedNotification:notification]];
+-  completionHandler(UNNotificationPresentationOptionNone);
+-}
+-
+-- (void)sendEventWithName:(NSString *)eventName body:(id)body
+-{
+-  // Silence React Native warning: "Sending ... with no listeners registered."
+-  // See: https://github.com/expo/expo/pull/10883#pullrequestreview-529183413
+-  // While in practice we don't need to verify this, as as of the end of 2020
+-  // we wouldn't send any event to JS if we weren't being observed because
+-  // we wouldn't be subscribed to the notification center delegate it's nice
+-  // to be sure this problem won't ever arise.
+-  if (_isBeingObserved) {
+-    [_eventEmitter sendEventWithName:eventName body:body];
+-  }
+-}
+-
+-- (NSDictionary *)serializedNotification:(UNNotification *)notification
+-{
+-  return [EXNotificationSerializer serializedNotification:notification];
+-}
+-
+-- (NSDictionary *)serializedNotificationResponse:(UNNotificationResponse *)notificationResponse
+-{
+-  return [EXNotificationSerializer serializedNotificationResponse:notificationResponse];
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
+new file mode 100644
+index 0000000..4aadb02
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
+@@ -0,0 +1,50 @@
++//  Copyright © 2024 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++import UIKit
++import MachO
++
++let onDidReceiveNotification = "onDidReceiveNotification"
++let onDidReceiveNotificationResponse = "onDidReceiveNotificationResponse"
++let onDidClearNotificationResponse = "onDidClearNotificationResponse"
++
++public class EmitterModule: Module, NotificationDelegate {
++  var presentedNotifications: Set<String> = []
++
++  public func definition() -> ModuleDefinition {
++    Name("ExpoNotificationsEmitter")
++
++    Events([onDidReceiveNotification, onDidReceiveNotificationResponse, onDidClearNotificationResponse])
++
++    OnStartObserving {
++      NotificationCenterManager.shared.addDelegate(self)
++    }
++
++    OnStopObserving {
++      NotificationCenterManager.shared.removeDelegate(self)
++    }
++  }
++
++  /*
++   TODO: background processing
++
++   - (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler
++   {
++     // Background task execution would happen here.
++     completionHandler(UIBackgroundFetchResultNoData);
++   }
++   */
++  
++  public func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
++    NotificationCenterManager.shared.lastResponse = response
++    let serializedResponse = EXNotificationSerializer.serializedNotificationResponse(response)
++    self.sendEvent(onDidReceiveNotificationResponse, serializedResponse as [String: Any])
++    return true
++  }
++
++  public func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool {
++    let serializedNotification = EXNotificationSerializer.serializedNotification(notification)
++    self.sendEvent(onDidReceiveNotification, serializedNotification as [String: Any])
++    return true
++  }
++}
