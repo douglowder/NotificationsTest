@@ -52,5 +52,8 @@
     "react-test-renderer": "18.2.0",
     "typescript": "~5.3.3"
   },
-  "private": true
+  "private": true,
+  "patchedDependencies": {
+    "expo-notifications@1.0.0-canary-20250221-ef26fed": "patches/expo-notifications@1.0.0-canary-20250221-ef26fed.patch"
+  }
 }

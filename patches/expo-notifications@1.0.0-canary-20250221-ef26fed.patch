@@ -1,0 +1,74 @@
+diff --git a/node_modules/expo-notifications/expo-module.config.json b/node_modules/expo-notifications/expo-module.config.json
+index a335999095c7b2b937f8daa3b857a769f0a9cec3..9f287803d551c001bf8a62cb035972b994122b1f 100644
+--- a/node_modules/expo-notifications/expo-module.config.json
++++ b/node_modules/expo-notifications/expo-module.config.json
+@@ -4,6 +4,7 @@
+     "modules": [
+       "BadgeModule",
+       "CategoriesModule",
++      "EmitterModule",
+       "PresentationModule",
+       "PushTokenModule",
+       "ServerRegistrationModule",
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.h
+deleted file mode 100644
+index 3590bf1007dfde851910c26e3ce7e2fd39b36c7d..0000000000000000000000000000000000000000
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.m
+deleted file mode 100644
+index 7d46d629c9d6e2c1c3045470b649f41d9adbd50b..0000000000000000000000000000000000000000
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
+new file mode 100644
+index 0000000000000000000000000000000000000000..4aadb02110e428db1e9802b5764424c70cb75377
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
+@@ -0,0 +1,50 @@
++//  Copyright © 2024 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++import UIKit
++import MachO
++
++let onDidReceiveNotification = "onDidReceiveNotification"
++let onDidReceiveNotificationResponse = "onDidReceiveNotificationResponse"
++let onDidClearNotificationResponse = "onDidClearNotificationResponse"
++
++public class EmitterModule: Module, NotificationDelegate {
++  var presentedNotifications: Set<String> = []
++
++  public func definition() -> ModuleDefinition {
++    Name("ExpoNotificationsEmitter")
++
++    Events([onDidReceiveNotification, onDidReceiveNotificationResponse, onDidClearNotificationResponse])
++
++    OnStartObserving {
++      NotificationCenterManager.shared.addDelegate(self)
++    }
++
++    OnStopObserving {
++      NotificationCenterManager.shared.removeDelegate(self)
++    }
++  }
++
++  /*
++   TODO: background processing
++
++   - (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler
++   {
++     // Background task execution would happen here.
++     completionHandler(UIBackgroundFetchResultNoData);
++   }
++   */
++  
++  public func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
++    NotificationCenterManager.shared.lastResponse = response
++    let serializedResponse = EXNotificationSerializer.serializedNotificationResponse(response)
++    self.sendEvent(onDidReceiveNotificationResponse, serializedResponse as [String: Any])
++    return true
++  }
++
++  public func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool {
++    let serializedNotification = EXNotificationSerializer.serializedNotification(notification)
++    self.sendEvent(onDidReceiveNotification, serializedNotification as [String: Any])
++    return true
++  }
++}
