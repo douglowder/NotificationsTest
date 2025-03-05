@@ -321,12 +321,314 @@ index 0000000..4aadb02
 +    return true
 +  }
 +}
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXNotificationsHandlerModule.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXNotificationsHandlerModule.h
+deleted file mode 100644
+index a8536c0..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXNotificationsHandlerModule.h
++++ /dev/null
+@@ -1,12 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXExportedModule.h>
+-#import <ExpoModulesCore/EXEventEmitter.h>
+-#import <ExpoModulesCore/EXModuleRegistryConsumer.h>
+-
+-#import <EXNotifications/EXNotificationsDelegate.h>
+-#import <EXNotifications/EXSingleNotificationHandlerTask.h>
+-
+-@interface EXNotificationsHandlerModule : EXExportedModule <EXEventEmitter, EXModuleRegistryConsumer, EXNotificationsDelegate, EXSingleNotificationHandlerTaskDelegate>
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXNotificationsHandlerModule.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXNotificationsHandlerModule.m
+deleted file mode 100644
+index e20e6e8..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXNotificationsHandlerModule.m
++++ /dev/null
+@@ -1,109 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXNotificationsHandlerModule.h>
+-#import <EXNotifications/EXNotificationSerializer.h>
+-#import <EXNotifications/EXNotificationCenterDelegate.h>
+-
+-#import <ExpoModulesCore/EXEventEmitterService.h>
+-
+-@interface EXNotificationsHandlerModule ()
+-
+-@property (nonatomic, weak) id<EXNotificationCenterDelegate> notificationCenterDelegate;
+-
+-@property (nonatomic, assign) BOOL isListening;
+-@property (nonatomic, assign) BOOL isBeingObserved;
+-
+-@property (nonatomic, weak) id<EXEventEmitterService> eventEmitter;
+-
+-@property (nonatomic, strong) NSMutableDictionary<NSString *, EXSingleNotificationHandlerTask *> *tasksMap;
+-
+-@end
+-
+-@implementation EXNotificationsHandlerModule
+-
+-EX_EXPORT_MODULE(ExpoNotificationsHandlerModule);
+-
+-- (instancetype)init
+-{
+-  if (self = [super init]) {
+-    _tasksMap = [NSMutableDictionary dictionary];
+-  }
+-  return self;
+-}
+-
+-# pragma mark - Exported methods
+-
+-EX_EXPORT_METHOD_AS(handleNotificationAsync,
+-                    handleNotificationAsync:(NSString *)identifier withBehavior:(NSDictionary *)behavior resolver:(EXPromiseResolveBlock)resolve rejecter:(EXPromiseRejectBlock)reject)
+-{
+-  EXSingleNotificationHandlerTask *task = _tasksMap[identifier];
+-  if (!task) {
+-    NSString *message = [NSString stringWithFormat:@"Failed to handle notification %@, it has already been handled.", identifier];
+-    return reject(@"ERR_NOTIFICATION_HANDLED", message, nil);
+-  }
+-  NSError *error = [task handleResponse:behavior];
+-  if (error) {
+-    return reject(error.userInfo[@"code"], error.userInfo[@"message"], error);
+-  } else {
+-    resolve(nil);
+-  }
+-}
+-
+-# pragma mark - EXModuleRegistryConsumer
+-
+-- (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry
+-{
+-  _eventEmitter = [moduleRegistry getModuleImplementingProtocol:@protocol(EXEventEmitterService)];
+-  _notificationCenterDelegate = [moduleRegistry getSingletonModuleForName:@"NotificationCenterDelegate"];
+-}
+-
+-# pragma mark - EXEventEmitter
+-
+-- (NSArray<NSString *> *)supportedEvents
+-{
+-  return [EXSingleNotificationHandlerTask eventNames];
+-}
+-
+-- (void)startObserving
+-{
+-  [self setIsBeingObserved:YES];
+-}
+-
+-- (void)stopObserving
+-{
+-  [self setIsBeingObserved:NO];
+-}
+-
+-- (void)setIsBeingObserved:(BOOL)isBeingObserved
+-{
+-  _isBeingObserved = isBeingObserved;
+-  BOOL shouldListen = _isBeingObserved;
+-  if (shouldListen && !_isListening) {
+-    [_notificationCenterDelegate addDelegate:self];
+-    _isListening = YES;
+-  } else if (!shouldListen && _isListening) {
+-    [_notificationCenterDelegate removeDelegate:self];
+-    _isListening = NO;
+-  }
+-}
+-
+-# pragma mark - EXNotificationsDelegate
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
+-{
+-  EXSingleNotificationHandlerTask *task = [[EXSingleNotificationHandlerTask alloc] initWithEventEmitter:_eventEmitter
+-                                                                                           notification:notification
+-                                                                                      completionHandler:completionHandler
+-                                                                                               delegate:self];
+-  [_tasksMap setObject:task forKey:task.identifier];
+-  [task start];
+-}
+-
+-# pragma mark - EXSingleNotificationHandlerTaskDelegate
+-
+-- (void)taskDidFinish:(EXSingleNotificationHandlerTask *)task
+-{
+-  [_tasksMap removeObjectForKey:task.identifier];
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXSingleNotificationHandlerTask.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXSingleNotificationHandlerTask.h
+deleted file mode 100644
+index b001ee6..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXSingleNotificationHandlerTask.h
++++ /dev/null
+@@ -1,33 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <Foundation/Foundation.h>
+-#import <ExpoModulesCore/EXEventEmitterService.h>
+-#import <UserNotifications/UserNotifications.h>
+-
+-NS_ASSUME_NONNULL_BEGIN
+-
+-@class EXSingleNotificationHandlerTask;
+-
+-@protocol EXSingleNotificationHandlerTaskDelegate
+-
+-- (void)taskDidFinish:(EXSingleNotificationHandlerTask *)task;
+-
+-@end
+-
+-@interface EXSingleNotificationHandlerTask : NSObject
+-
+-+ (NSArray<NSString *> *)eventNames;
+-
+-- (instancetype)initWithEventEmitter:(id<EXEventEmitterService>)eventEmitter
+-                        notification:(UNNotification *)notification
+-                   completionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
+-                            delegate:(id<EXSingleNotificationHandlerTaskDelegate>)delegate;
+-
+-- (NSString *)identifier;
+-
+-- (void)start;
+-- (nullable NSError *)handleResponse:(NSDictionary *)response;
+-
+-@end
+-
+-NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXSingleNotificationHandlerTask.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXSingleNotificationHandlerTask.m
+deleted file mode 100644
+index 25fcd67..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/EXSingleNotificationHandlerTask.m
++++ /dev/null
+@@ -1,124 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXSingleNotificationHandlerTask.h>
+-#import <EXNotifications/EXNotificationSerializer.h>
+-
+-static NSString * const onHandleNotification = @"onHandleNotification";
+-static NSString * const onHandleNotificationTimeout = @"onHandleNotificationTimeout";
+-
+-static NSString * const shouldShowAlertKey = @"shouldShowAlert";
+-static NSString * const shouldPlaySoundKey = @"shouldPlaySound";
+-static NSString * const shouldSetBadgeKey = @"shouldSetBadge";
+-
+-static NSTimeInterval const secondsToTimeout = 3;
+-
+-static NSString * const EXNotificationHandlerErrorDomain = @"expo.notifications.handler";
+-
+-@interface EXSingleNotificationHandlerTask ()
+-
+-@property (nonatomic, weak) id<EXEventEmitterService> eventEmitter;
+-@property (nonatomic, strong) UNNotification *notification;
+-@property (nonatomic, copy) void (^completionHandler)(UNNotificationPresentationOptions);
+-
+-@property (nonatomic, weak) id<EXSingleNotificationHandlerTaskDelegate> delegate;
+-
+-@property (nonatomic, strong) NSTimer *timer;
+-
+-@end
+-
+-@implementation EXSingleNotificationHandlerTask
+-
+-+ (NSArray<NSString *> *)eventNames
+-{
+-  return @[onHandleNotification, onHandleNotificationTimeout];
+-}
+-
+-- (instancetype)initWithEventEmitter:(id<EXEventEmitterService>)eventEmitter
+-                        notification:(UNNotification *)notification
+-                   completionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
+-                            delegate:(nonnull id<EXSingleNotificationHandlerTaskDelegate>)delegate
+-{
+-  if (self = [super init]) {
+-    _eventEmitter = eventEmitter;
+-    _notification = notification;
+-    _completionHandler = completionHandler;
+-    _delegate = delegate;
+-  }
+-  return self;
+-}
+-
+-- (NSString *)identifier
+-{
+-  return _notification.request.identifier;
+-}
+-
+-- (void)start
+-{
+-  [_eventEmitter sendEventWithName:onHandleNotification body:@{
+-    @"id": _notification.request.identifier,
+-    @"notification": [EXNotificationSerializer serializedNotification:_notification]
+-  }];
+-  _timer = [NSTimer scheduledTimerWithTimeInterval:secondsToTimeout target:self selector:@selector(handleTimeout) userInfo:nil repeats:NO];
+-}
+-
+-- (nullable NSError *)handleResponse:(NSDictionary *)response
+-{
+-  @synchronized (self) {
+-    NSError *maybeError = [self callCompletionHandlerWithOptions:[self presentationOptionsFromResponse:response]];
+-    [self finish];
+-    return maybeError;
+-  }
+-}
+-
+-- (void)handleTimeout
+-{
+-  @synchronized (self) {
+-    [_eventEmitter sendEventWithName:onHandleNotificationTimeout body:@{
+-      @"id": _notification.request.identifier,
+-      @"notification": [EXNotificationSerializer serializedNotification:_notification]
+-    }];
+-    [self callCompletionHandlerWithOptions:UNNotificationPresentationOptionNone];
+-    [self finish];
+-  }
+-}
+-
+-- (nullable NSError *)callCompletionHandlerWithOptions:(UNNotificationPresentationOptions)options
+-{
+-  if (_completionHandler) {
+-    _completionHandler(options);
+-    _completionHandler = nil;
+-    return nil;
+-  } else {
+-    return [NSError errorWithDomain:EXNotificationHandlerErrorDomain code:-1 userInfo:@{
+-      @"code": @"ERR_NOTIFICATION_RESPONSE_TIMEOUT",
+-      @"message": @"Notification has already been handled. Most probably the request has timed out."
+-    }];
+-  }
+-}
+-
+-- (void)finish
+-{
+-  [_timer invalidate];
+-  _timer = nil;
+-  [_delegate taskDidFinish:self];
+-}
+-
+-- (UNNotificationPresentationOptions)presentationOptionsFromResponse:(NSDictionary *)response
+-{
+-  UNNotificationPresentationOptions options = UNNotificationPresentationOptionNone;
+-
+-  // TODO(iOS 14): use UNNotificationPresentationOptionList and UNNotificationPresentationOptionBanner
+-  if ([response[shouldShowAlertKey] boolValue]) {
+-    options |= UNNotificationPresentationOptionAlert;
+-  }
+-  if ([response[shouldPlaySoundKey] boolValue]) {
+-    options |= UNNotificationPresentationOptionSound;
+-  }
+-  if ([response[shouldSetBadgeKey] boolValue]) {
+-    options |= UNNotificationPresentationOptionBadge;
+-  }
+-
+-  return options;
+-}
+-
+-@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
 new file mode 100644
-index 0000000..4b70073
+index 0000000..5fc9e12
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,76 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -336,8 +638,8 @@ index 0000000..4b70073
 +let onHandleNotification = "onHandleNotification"
 +let onHandleNotificationTimeout = "onHandleNotificationTimeout"
 +
-+public class HandlerModule: Module, NotificationDelegate {
-+  var tasksMap: [String: EXSingleNotificationHandlerTask] = [:]
++public class HandlerModule: Module, NotificationDelegate, SingleNotificationHandlerTaskDelegate {
++  var tasksMap: [String: SingleNotificationHandlerTask] = [:]
 +
 +  public func definition() -> ModuleDefinition {
 +    Name("ExpoNotificationsEmitter")
@@ -357,35 +659,142 @@ index 0000000..4b70073
 +        promise.reject("ERR_NOTIFICATION_HANDLED", "Failed to handle notification \(identifier) because it has already been handled")
 +        return
 +      }
-+      if let error = task.handleResponse(behavior) as? NSError {
-+        promise.reject(error.userInfo["code"] as? String ?? "", error.userInfo["message"] as? String ?? "")
-+      } else {
++      if task.handleResponse(behavior) {
 +        promise.resolve(nil)
++      } else {
++        promise.reject("ERR_NOTIFICATION_RESPONSE_TIMEOUT", "Notification has already been handled. Most probably the request has timed out.")
 +      }
 +    }
 +  }
 +
-+  /*
-+   TODO: background processing
-+
-+   - (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler
-+   {
-+     // Background task execution would happen here.
-+     completionHandler(UIBackgroundFetchResultNoData);
-+   }
-+   */
-+
-+  public func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
-+    NotificationCenterManager.shared.lastResponse = response
-+    let serializedResponse = EXNotificationSerializer.serializedNotificationResponse(response)
-+    self.sendEvent(onDidReceiveNotificationResponse, serializedResponse as [String: Any])
-+    return true
-+  }
++  // MARK: - NotificationDelegate
 +
 +  public func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool {
-+    let serializedNotification = EXNotificationSerializer.serializedNotification(notification)
-+    self.sendEvent(onDidReceiveNotification, serializedNotification as [String: Any])
-+    return true
++    /*
++     EXSingleNotificationHandlerTask *task = [[EXSingleNotificationHandlerTask alloc] initWithEventEmitter:_eventEmitter
++                                                                                              notification:notification
++                                                                                         completionHandler:completionHandler
++                                                                                                  delegate:self];
++     [_tasksMap setObject:task forKey:task.identifier];
++     [task start];
++     */
++    let task = SingleNotificationHandlerTask(notification: notification, completionHandler: completionHandler, delegate: self)
++    tasksMap[task.identifier] = task
++    task.start()
++  }
++
++  // MARK: - SingleNotificationHandlerTaskDelegate
++
++  public func taskDidFinish(_ task: SingleNotificationHandlerTask) {
++    tasksMap[task.identifier] = nil
++  }
++
++  public func handleNotification(_ notification: UNNotification) {
++    sendEvent(onHandleNotification, [
++      "id": notification.request.identifier,
++      "notification": EXNotificationSerializer.serializedNotification(notification)
++    ])
++  }
++
++  public func handleNotificationTimeout(_ notification: UNNotification) {
++    sendEvent(onHandleNotificationTimeout, [
++      "id": notification.request.identifier,
++      "notification": EXNotificationSerializer.serializedNotification(notification)
++    ])
++  }
++
++
++}
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift
+new file mode 100644
+index 0000000..b08bd44
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift
+@@ -0,0 +1,86 @@
++//  Copyright © 2024 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++import UIKit
++
++let shouldShowAlertKey = "shouldShowAlert"
++let shouldPlaySoundKey = "shouldPlaySound"
++let shouldSetBadgeKey = "shouldSetBadge"
++
++public protocol SingleNotificationHandlerTaskDelegate {
++  func taskDidFinish(_ task: SingleNotificationHandlerTask)
++  func handleNotification(_ notification: UNNotification)
++  func handleNotificationTimeout(_ notification: UNNotification)
++}
++
++public class SingleNotificationHandlerTask {
++  public let identifier: String
++
++  private let notification: UNNotification
++  private var completionHandler: ((UNNotificationPresentationOptions) -> Void)?
++  private let delegate: SingleNotificationHandlerTaskDelegate
++
++  private var timer: Timer?
++
++  public init(
++    notification: UNNotification,
++    completionHandler: @escaping (UNNotificationPresentationOptions) -> Void,
++    delegate: SingleNotificationHandlerTaskDelegate
++  ) {
++    self.identifier = notification.request.identifier
++    self.delegate = delegate
++    self.notification = notification
++    self.completionHandler = completionHandler
++  }
++
++  public func start() {
++    delegate.handleNotification(notification)
++    timer = Timer.scheduledTimer(timeInterval: 3, target: self, selector: #selector(timeout), userInfo: nil, repeats: false)
++  }
++
++  @objc
++  public func timeout() {
++    delegate.handleNotificationTimeout(notification)
++    finish()
++  }
++
++  public func handleResponse(_ behavior: [String: Any]) -> Bool {
++    if let completionHandler = completionHandler {
++      completionHandler(presentationOptions(behavior))
++      finish()
++      return true
++    } else {
++      finish()
++      return false
++    }
++  }
++
++  public func finish() {
++    timer?.invalidate()
++    self.completionHandler = nil
++    delegate.taskDidFinish(self)
++  }
++
++
++  func presentationOptions(_ behavior: [String: Any]) -> UNNotificationPresentationOptions {
++    var options: UNNotificationPresentationOptions = []
++
++    /*
++    if let shouldShowAlert = behavior[shouldShowAlertKey] as? Bool, shouldShowAlert {
++      options.insert(.alert)
++    }
++     */
++
++    if let shouldPlaySound = behavior[shouldPlaySoundKey] as? Bool, shouldPlaySound {
++      options.insert(.sound)
++    }
++
++    if let shouldSetBadge = behavior[shouldSetBadgeKey] as? Bool, shouldSetBadge {
++      options.insert(.badge)
++    }
++
++    // TODO(iOS 14): use UNNotificationPresentationOptionList and UNNotificationPresentationOptionBanner
++
++    return options
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
