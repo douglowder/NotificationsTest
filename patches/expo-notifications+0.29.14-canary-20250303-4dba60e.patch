@@ -628,7 +628,7 @@ new file mode 100644
 index 0000000..5fc9e12
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,69 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -670,17 +670,10 @@ index 0000000..5fc9e12
 +  // MARK: - NotificationDelegate
 +
 +  public func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool {
-+    /*
-+     EXSingleNotificationHandlerTask *task = [[EXSingleNotificationHandlerTask alloc] initWithEventEmitter:_eventEmitter
-+                                                                                              notification:notification
-+                                                                                         completionHandler:completionHandler
-+                                                                                                  delegate:self];
-+     [_tasksMap setObject:task forKey:task.identifier];
-+     [task start];
-+     */
 +    let task = SingleNotificationHandlerTask(notification: notification, completionHandler: completionHandler, delegate: self)
 +    tasksMap[task.identifier] = task
 +    task.start()
++    return true
 +  }
 +
 +  // MARK: - SingleNotificationHandlerTaskDelegate
