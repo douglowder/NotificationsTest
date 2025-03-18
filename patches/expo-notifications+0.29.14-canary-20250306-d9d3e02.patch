@@ -11,6 +11,238 @@ index a335999..688c0f0 100644
        "PresentationModule",
        "PushTokenModule",
        "ServerRegistrationModule",
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h
+deleted file mode 100644
+index d3423bf..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h
++++ /dev/null
+@@ -1,34 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <Foundation/Foundation.h>
+-#import <UIKit/UIKit.h>
+-#import <ExpoModulesCore/EXSingletonModule.h>
+-#import <UserNotifications/UserNotifications.h>
+-#import <EXNotifications/EXNotificationsDelegate.h>
+-
+-NS_ASSUME_NONNULL_BEGIN
+-
+-@protocol EXNotificationCenterDelegate
+-
+-- (void)addDelegate:(id<EXNotificationsDelegate>)delegate;
+-- (void)removeDelegate:(id<EXNotificationsDelegate>)delegate;
+-- (nullable UNNotificationResponse *)lastNotificationResponse;
+-- (void)setLastNotificationResponse:(nullable UNNotificationResponse *)response;
+-
+-@end
+-
+-@interface EXNotificationCenterDelegate : EXSingletonModule <UIApplicationDelegate, UNUserNotificationCenterDelegate, EXNotificationCenterDelegate>
+-
+-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(nullable NSDictionary<UIApplicationLaunchOptionsKey,id> *)launchOptions;
+-- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler;
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler;
+-/*
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler;
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center openSettingsForNotification:(nullable UNNotification *)notification;
+- */
+-@property (nonatomic, strong, nullable) UNNotificationResponse *lastNotificationResponse;
+-
+-@end
+-
+-NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m
+deleted file mode 100644
+index fc7d0f5..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m
++++ /dev/null
+@@ -1,186 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXNotificationCenterDelegate.h>
+-#import <ExpoModulesCore/EXDefines.h>
+-#import <EXNotifications/EXNotificationsDelegate.h>
+-
+-#if __has_include(<EXNotifications/EXNotifications-Swift.h>)
+-#import <EXNotifications/EXNotifications-Swift.h>
+-#else
+-#import "EXNotifications-Swift.h"
+-#endif
+-
+-@interface EXNotificationCenterDelegate ()
+-
+-@property (nonatomic, strong) NSPointerArray *delegates;
+-@property (nonatomic, strong) NSMutableArray<UNNotificationResponse *> *pendingNotificationResponses;
+-@property (nonatomic, weak) EXNotificationCenterManager *notificationCenterManager;
+-
+-@end
+-
+-@implementation EXNotificationCenterDelegate
+-
+-EX_REGISTER_SINGLETON_MODULE(NotificationCenterDelegate);
+-
+-- (instancetype)init
+-{
+-  if (self = [super init]) {
+-    _delegates = [NSPointerArray weakObjectsPointerArray];
+-    _pendingNotificationResponses = [NSMutableArray array];
+-    _notificationCenterManager = [EXNotificationCenterManager shared];
+-  }
+-  return self;
+-}
+-
+-# pragma mark - UIApplicationDelegate
+-
+-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary<UIApplicationLaunchOptionsKey,id> *)launchOptions
+-{
+-  if ([UNUserNotificationCenter currentNotificationCenter].delegate) {
+-    EXLogWarn(@"[expo-notifications] EXNotificationCenterDelegate encountered already present delegate of UNUserNotificationCenter: %@. "
+-              "EXNotificationCenterDelegate will not overwrite the value not to break other features of your app. "
+-              "In return, expo-notifications may not work properly. "
+-              "To fix this problem either remove setting of the second delegate "
+-              "or set the delegate to an instance of EXNotificationCenterDelegate manually afterwards.",
+-              [UNUserNotificationCenter currentNotificationCenter].delegate);
+-    return YES;
+-  }
+-
+-  [[UNUserNotificationCenter currentNotificationCenter] setDelegate:self];
+-  return YES;
+-}
+-
+-- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler
+-{
+-  __block int delegatesCalled = 0;
+-  __block int delegatesCompleted = 0;
+-  __block BOOL delegatingCompleted = NO;
+-  __block BOOL delegatesFailed = 0;
+-  __block UIBackgroundFetchResult resultSum = UIBackgroundFetchResultNoData;
+-  __block void (^completionHandlerCaller)(void) = ^{
+-    if (delegatingCompleted && delegatesCompleted == delegatesCalled) {
+-      if (delegatesCompleted == delegatesFailed) {
+-        // If all delegates failed to fetch result, let's let the OS know about that
+-        completionHandler(UIBackgroundFetchResultFailed);
+-      } else {
+-        // If at least one succeeded, let's take it as read and respond with that result.
+-        completionHandler(resultSum);
+-      }
+-    }
+-  };
+-
+-  for (int i = 0; i < _delegates.count; i++) {
+-    id pointer = [_delegates pointerAtIndex:i];
+-    if ([pointer respondsToSelector:@selector(application:didReceiveRemoteNotification:fetchCompletionHandler:)]) {
+-      [pointer application:application didReceiveRemoteNotification:userInfo fetchCompletionHandler:^(UIBackgroundFetchResult result) {
+-        @synchronized (self) {
+-          if (result == UIBackgroundFetchResultFailed) {
+-            delegatesFailed += 1;
+-          } else if (result == UIBackgroundFetchResultNewData) {
+-            resultSum = UIBackgroundFetchResultNewData;
+-          }
+-          delegatesCompleted += 1;
+-          completionHandlerCaller();
+-        }
+-      }];
+-      @synchronized (self) {
+-        delegatesCalled += 1;
+-      }
+-    }
+-  }
+-  @synchronized (self) {
+-    delegatingCompleted = YES;
+-    completionHandlerCaller();
+-  }
+-}
+-
+-# pragma mark - UNUserNotificationCenterDelegate
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
+-{
+-  // Delegate to the new Swift code
+-  [_notificationCenterManager userNotificationCenter:center willPresentNotification:notification withCompletionHandler:completionHandler];
+-}
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler
+-{
+-  // Save last response here for use by EXNotificationsEmitter
+-  self.lastNotificationResponse = response;
+-  // Save response to pending responses array if none of the handlers will handle it.
+-  BOOL responseWillBeHandledByAppropriateDelegate = NO;
+-  for (int i = 0; i < _delegates.count; i++) {
+-    id pointer = [_delegates pointerAtIndex:i];
+-    if ([pointer respondsToSelector:@selector(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:)]) {
+-      responseWillBeHandledByAppropriateDelegate = YES;
+-      break;
+-    }
+-  }
+-  if (!responseWillBeHandledByAppropriateDelegate) {
+-    [_pendingNotificationResponses addObject:response];
+-  }
+-
+-  __block int delegatesCalled = 0;
+-  __block int delegatesCompleted = 0;
+-  __block BOOL delegatingCompleted = NO;
+-  void (^completionHandlerCaller)(void) = ^{
+-    if (delegatingCompleted && delegatesCompleted == delegatesCalled) {
+-      completionHandler();
+-    }
+-  };
+-
+-  for (int i = 0; i < _delegates.count; i++) {
+-    id pointer = [_delegates pointerAtIndex:i];
+-    if ([pointer respondsToSelector:@selector(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:)]) {
+-      [pointer userNotificationCenter:center didReceiveNotificationResponse:response withCompletionHandler:^{
+-        @synchronized (self) {
+-          delegatesCompleted += 1;
+-          completionHandlerCaller();
+-        }
+-      }];
+-      @synchronized (self) {
+-        delegatesCalled += 1;
+-      }
+-    }
+-  }
+-  @synchronized (self) {
+-    delegatingCompleted = YES;
+-    completionHandlerCaller();
+-  }
+-}
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center openSettingsForNotification:(UNNotification *)notification
+-{
+-  // Delegate to the new Swift manager
+-  [_notificationCenterManager userNotificationCenter:center openSettingsForNotification:notification];
+-}
+-
+-# pragma mark - EXNotificationCenterDelegate
+-
+-- (void)addDelegate:(id<EXNotificationsDelegate>)delegate
+-{
+-  [_delegates addPointer:(__bridge void * _Nullable)(delegate)];
+-  if ([delegate respondsToSelector:@selector(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:)]) {
+-    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+-    for (UNNotificationResponse *response in _pendingNotificationResponses) {
+-      [delegate userNotificationCenter:center didReceiveNotificationResponse:response withCompletionHandler:^{
+-        // completion handler doesn't need to do anything
+-      }];
+-    }
+-  }
+-}
+-
+-- (void)removeDelegate:(id<EXNotificationsDelegate>)delegate
+-{
+-  for (int i = 0; i < _delegates.count; i++) {
+-    id pointer = [_delegates pointerAtIndex:i];
+-    if (pointer == (__bridge void * _Nullable)(delegate) || !pointer) {
+-      [_delegates removePointerAtIndex:i];
+-      i--;
+-    }
+-  }
+-  // compact doesn't work, that's why we need the `|| !pointer` above
+-  // http://www.openradar.me/15396578
+-  [_delegates compact];
+-}
+-
+-@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationSerializer.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationSerializer.h
 index 14e35d3..12a72cb 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationSerializer.h
@@ -115,6 +347,39 @@ index 1c5bdd0..5f6d83a 100644
  {
    NSMutableDictionary *serializedRegion = [NSMutableDictionary dictionary];
    serializedRegion[@"identifier"] = region.identifier;
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationsDelegate.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationsDelegate.h
+deleted file mode 100644
+index e20ca83..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationsDelegate.h
++++ /dev/null
+@@ -1,27 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <Foundation/Foundation.h>
+-#import <UIKit/UIKit.h>
+-#import <UserNotifications/UserNotifications.h>
+-
+-NS_ASSUME_NONNULL_BEGIN
+-
+-@protocol EXNotificationsDelegate <NSObject>
+-
+-@optional
+-
+-# pragma mark - UIApplicationDelegate
+-
+-- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler;
+-
+-# pragma mark - UNUserNotificationCenterDelegate
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)notification withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler;
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void (^)(void))completionHandler;
+-
+-- (void)userNotificationCenter:(UNUserNotificationCenter *)center openSettingsForNotification:(UNNotification *)notification;
+-
+-@end
+-
+-NS_ASSUME_NONNULL_END
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EXNotificationsEmitter.h
 deleted file mode 100644
 index 3590bf1..0000000
@@ -267,10 +532,10 @@ index 7d46d62..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
 new file mode 100644
-index 0000000..4aadb02
+index 0000000..f28c57c
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,47 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -298,17 +563,14 @@ index 0000000..4aadb02
 +    }
 +  }
 +
-+  /*
-+   TODO: background processing
++  public func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
++    let serializedNotification = EXNotificationSerializer.serializedNotification(notification)
++    self.sendEvent(onDidReceiveNotification, serializedNotification as [String: Any])
++    completionHandler(.newData)
++    return true
++  }
 +
-+   - (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler
-+   {
-+     // Background task execution would happen here.
-+     completionHandler(UIBackgroundFetchResultNoData);
-+   }
-+   */
-+  
-+  public func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
++  public func didReceiveResponse(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
 +    NotificationCenterManager.shared.lastResponse = response
 +    let serializedResponse = EXNotificationSerializer.serializedNotificationResponse(response)
 +    self.sendEvent(onDidReceiveNotificationResponse, serializedResponse as [String: Any])
@@ -625,7 +887,7 @@ index 25fcd67..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
 new file mode 100644
-index 0000000..5fc9e12
+index 0000000..c932e2a
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
 @@ -0,0 +1,69 @@
@@ -642,7 +904,7 @@ index 0000000..5fc9e12
 +  var tasksMap: [String: SingleNotificationHandlerTask] = [:]
 +
 +  public func definition() -> ModuleDefinition {
-+    Name("ExpoNotificationsEmitter")
++    Name("ExpoNotificationsHandlerModule")
 +
 +    Events([onHandleNotification, onHandleNotificationTimeout])
 +
@@ -791,10 +1053,39 @@ index 0000000..b08bd44
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
-index e584c1e..83d4433 100644
+index e584c1e..574b648 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
-@@ -37,6 +37,7 @@ public class NotificationCenterManager: NSObject,
+@@ -2,13 +2,15 @@
+ 
+ import ExpoModulesCore
+ import Foundation
++import UserNotifications
+ 
+ /**
+  Protocol that NotificationCenterManager delegates may implement
+  */
+ public protocol NotificationDelegate: AnyObject {
+   func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool
+-  func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool
++  func didReceiveResponse(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool
++  func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool
+   func openSettings(_ notification: UNNotification?)
+   func didRegister(_ deviceToken: String)
+   func didFailRegistration(_ error: Error)
+@@ -18,7 +20,10 @@ public extension NotificationDelegate {
+   func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool {
+     return false
+   }
+-  func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
++  func didReceiveResponse(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
++    return false
++  }
++  func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
+     return false
+   }
+   func openSettings(_ notification: UNNotification?) {}
+@@ -37,6 +42,7 @@ public class NotificationCenterManager: NSObject,
    @objc
    public static let shared = NotificationCenterManager()
  
@@ -802,3 +1093,51 @@ index e584c1e..83d4433 100644
    var delegates: [NotificationDelegate] = []
    var pendingResponses: [UNNotificationResponse] = []
    let userNotificationCenter: UNUserNotificationCenter = UNUserNotificationCenter.current()
+@@ -67,7 +73,7 @@ public class NotificationCenterManager: NSObject,
+     delegates.append(delegate)
+     var handled = false
+     for pendingResponse in pendingResponses {
+-      handled = delegate.didReceive(pendingResponse, completionHandler: {})
++      handled = delegate.didReceiveResponse(pendingResponse, completionHandler: {})
+     }
+     if handled {
+       pendingResponses.removeAll()
+@@ -120,7 +126,7 @@ public class NotificationCenterManager: NSObject,
+   ) {
+     var handled = false
+     for delegate in delegates {
+-      handled = handled || delegate.didReceive(response, completionHandler: completionHandler)
++      handled = handled || delegate.didReceiveResponse(response, completionHandler: completionHandler)
+     }
+     if !handled {
+       pendingResponses.append(response)
+@@ -133,4 +139,15 @@ public class NotificationCenterManager: NSObject,
+       delegate.openSettings(notification)
+     }
+   }
++
++  // MARK: - Called from NotificationsAppDelegateSubscriber
++  public func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
++    var handled = false
++    for delegate in delegates {
++      handled = handled || delegate.didReceiveNotification(notification, completionHandler: completionHandler)
++    }
++    if !handled {
++      completionHandler(.noData)
++    }
++  }
+ }
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
+index 13206ba..d66d701 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
+@@ -11,6 +11,9 @@ public class NotificationsAppDelegateSubscriber: ExpoAppDelegateSubscriber {
+   public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
+     notificationCenterManager.didFailRegistration(error)
+   }
++
++  public func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
++  }
+ }
+ 
+ private func dataToString(_ data: Data) -> String {
