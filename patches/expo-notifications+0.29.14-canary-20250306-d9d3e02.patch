@@ -11,6 +11,53 @@ index a335999..688c0f0 100644
        "PresentationModule",
        "PushTokenModule",
        "ServerRegistrationModule",
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
+index d68c4b8..d3f3f14 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
+@@ -2,7 +2,7 @@
+ 
+ #import <ExpoModulesCore/EXExportedModule.h>
+ #import <ExpoModulesCore/EXModuleRegistryConsumer.h>
+-#import <EXNotifications/EXNotificationsDelegate.h>
++// #import <EXNotifications/EXNotificationsDelegate.h>
+ 
+ typedef NS_ENUM(NSUInteger, EXBackgroundNotificationResult) {
+   EXBackgroundNotificationResultNoData = 1,
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m
+index 967e528..33e7a9d 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m
+@@ -27,6 +27,7 @@ EX_EXPORT_METHOD_AS(registerTaskAsync,
+                     resolve:(EXPromiseResolveBlock)resolve
+                     reject:(EXPromiseRejectBlock)reject)
+ {
++  /*
+   if (![_taskManager hasBackgroundModeEnabled:@"remote-notification"]) {
+     return reject(
+                   @"E_BACKGROUND_REMOTE_NOTIFICATIONS_DISABLED",
+@@ -43,6 +44,7 @@ EX_EXPORT_METHOD_AS(registerTaskAsync,
+   @catch (NSException *e) {
+     return reject(e.name, e.reason, nil);
+   }
++  */
+   resolve(nil);
+ }
+ 
+@@ -51,11 +53,13 @@ EX_EXPORT_METHOD_AS(unregisterTaskAsync,
+                     resolve:(EXPromiseResolveBlock)resolve
+                     reject:(EXPromiseRejectBlock)reject)
+ {
++  /*
+   @try {
+     [_taskManager unregisterTaskWithName:taskName consumerClass:[EXBackgroundRemoteNotificationConsumer class]];
+   } @catch (NSException *e) {
+     return reject(e.name, e.reason, nil);
+   }
++   */
+   resolve(nil);
+ }
+ 
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h
 deleted file mode 100644
 index d3423bf..0000000
