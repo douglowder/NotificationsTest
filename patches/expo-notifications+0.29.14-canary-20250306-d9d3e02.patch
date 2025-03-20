@@ -12,52 +12,17 @@ index a335999..688c0f0 100644
        "PushTokenModule",
        "ServerRegistrationModule",
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
-index d68c4b8..d3f3f14 100644
+index d68c4b8..ed48fec 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
-@@ -2,7 +2,7 @@
+@@ -2,7 +2,6 @@
  
  #import <ExpoModulesCore/EXExportedModule.h>
  #import <ExpoModulesCore/EXModuleRegistryConsumer.h>
 -#import <EXNotifications/EXNotificationsDelegate.h>
-+// #import <EXNotifications/EXNotificationsDelegate.h>
  
  typedef NS_ENUM(NSUInteger, EXBackgroundNotificationResult) {
    EXBackgroundNotificationResultNoData = 1,
-diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m
-index 967e528..33e7a9d 100644
---- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m
-+++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m
-@@ -27,6 +27,7 @@ EX_EXPORT_METHOD_AS(registerTaskAsync,
-                     resolve:(EXPromiseResolveBlock)resolve
-                     reject:(EXPromiseRejectBlock)reject)
- {
-+  /*
-   if (![_taskManager hasBackgroundModeEnabled:@"remote-notification"]) {
-     return reject(
-                   @"E_BACKGROUND_REMOTE_NOTIFICATIONS_DISABLED",
-@@ -43,6 +44,7 @@ EX_EXPORT_METHOD_AS(registerTaskAsync,
-   @catch (NSException *e) {
-     return reject(e.name, e.reason, nil);
-   }
-+  */
-   resolve(nil);
- }
- 
-@@ -51,11 +53,13 @@ EX_EXPORT_METHOD_AS(unregisterTaskAsync,
-                     resolve:(EXPromiseResolveBlock)resolve
-                     reject:(EXPromiseRejectBlock)reject)
- {
-+  /*
-   @try {
-     [_taskManager unregisterTaskWithName:taskName consumerClass:[EXBackgroundRemoteNotificationConsumer class]];
-   } @catch (NSException *e) {
-     return reject(e.name, e.reason, nil);
-   }
-+   */
-   resolve(nil);
- }
- 
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h
 deleted file mode 100644
 index d3423bf..0000000
@@ -579,7 +544,7 @@ index 7d46d62..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
 new file mode 100644
-index 0000000..4c3b702
+index 0000000..abb6dcc
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
 @@ -0,0 +1,46 @@
@@ -594,8 +559,6 @@ index 0000000..4c3b702
 +let onDidClearNotificationResponse = "onDidClearNotificationResponse"
 +
 +public class EmitterModule: Module, NotificationDelegate {
-+  var presentedNotifications: Set<String> = []
-+
 +  public func definition() -> ModuleDefinition {
 +    Name("ExpoNotificationsEmitter")
 +
@@ -617,15 +580,17 @@ index 0000000..4c3b702
 +
 +  public func didReceiveResponse(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
 +    NotificationCenterManager.shared.lastResponse = response
++    // TODO: convert serialization to Records
 +    let serializedResponse = EXNotificationSerializer.serializedNotificationResponse(response)
 +    self.sendEvent(onDidReceiveNotificationResponse, serializedResponse as [String: Any])
 +    return true
 +  }
 +
 +  public func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool {
++    // TODO: convert serialization to Records
 +    let serializedNotification = EXNotificationSerializer.serializedNotification(notification)
 +    self.sendEvent(onDidReceiveNotification, serializedNotification as [String: Any])
-+    completionHandler([.badge, .banner, .sound])
++    completionHandler([])
 +    return true
 +  }
 +}
@@ -933,10 +898,10 @@ index 25fcd67..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
 new file mode 100644
-index 0000000..c932e2a
+index 0000000..50fc2be
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,67 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1003,15 +968,13 @@ index 0000000..c932e2a
 +      "notification": EXNotificationSerializer.serializedNotification(notification)
 +    ])
 +  }
-+
-+
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift
 new file mode 100644
-index 0000000..b08bd44
+index 0000000..7835619
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,85 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1021,7 +984,7 @@ index 0000000..b08bd44
 +let shouldPlaySoundKey = "shouldPlaySound"
 +let shouldSetBadgeKey = "shouldSetBadge"
 +
-+public protocol SingleNotificationHandlerTaskDelegate {
++public protocol SingleNotificationHandlerTaskDelegate: AnyObject {
 +  func taskDidFinish(_ task: SingleNotificationHandlerTask)
 +  func handleNotification(_ notification: UNNotification)
 +  func handleNotificationTimeout(_ notification: UNNotification)
@@ -1063,10 +1026,9 @@ index 0000000..b08bd44
 +      completionHandler(presentationOptions(behavior))
 +      finish()
 +      return true
-+    } else {
-+      finish()
-+      return false
 +    }
++    finish()
++    return false
 +  }
 +
 +  public func finish() {
@@ -1075,11 +1037,11 @@ index 0000000..b08bd44
 +    delegate.taskDidFinish(self)
 +  }
 +
-+
 +  func presentationOptions(_ behavior: [String: Any]) -> UNNotificationPresentationOptions {
 +    var options: UNNotificationPresentationOptions = []
 +
 +    /*
++    (Alert option was deprecated in iOS 14)
 +    if let shouldShowAlert = behavior[shouldShowAlertKey] as? Bool, shouldShowAlert {
 +      options.insert(.alert)
 +    }
@@ -1099,7 +1061,7 @@ index 0000000..b08bd44
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
-index e584c1e..ab3af51 100644
+index e584c1e..479877b 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
 @@ -2,13 +2,15 @@
@@ -1131,7 +1093,14 @@ index e584c1e..ab3af51 100644
      return false
    }
    func openSettings(_ notification: UNNotification?) {}
-@@ -37,6 +42,7 @@ public class NotificationCenterManager: NSObject,
+@@ -30,44 +35,37 @@ public extension NotificationDelegate {
+  Singleton that sets itself as the UserNotificationCenter delegate,
+  and calls its own delegates in response to notification center calls.
+  */
+-@objc(EXNotificationCenterManager)
+ public class NotificationCenterManager: NSObject,
+   UNUserNotificationCenterDelegate,
+   NotificationDelegate {
    @objc
    public static let shared = NotificationCenterManager()
  
@@ -1139,15 +1108,27 @@ index e584c1e..ab3af51 100644
    var delegates: [NotificationDelegate] = []
    var pendingResponses: [UNNotificationResponse] = []
    let userNotificationCenter: UNUserNotificationCenter = UNUserNotificationCenter.current()
-@@ -46,7 +52,6 @@ public class NotificationCenterManager: NSObject,
-   // For now, we allow EXNotificationDelegate to add itself as the user notification delegate, and call the
-   // shared instance of this class.
-   //
+ 
+-  // TODO: Once Swift conversion is complete, the old EXNotificationDelegate class will be removed, and
+-  // we will need to add the initialization code below.
+-  // For now, we allow EXNotificationDelegate to add itself as the user notification delegate, and call the
+-  // shared instance of this class.
+-  //
 -  /*
    private override init() {
      super.init()
      if UNUserNotificationCenter.current().delegate != nil {
-@@ -61,13 +66,12 @@ public class NotificationCenterManager: NSObject,
+       NSLog(
+-        "[expo-notifications] EXNotificationCenterDelegate encountered already present delegate of " +
+-        "UNUserNotificationCenter. EXNotificationCenterDelegate will not overwrite the value not to break other " +
++        "[expo-notifications] NotificationCenterManager encountered already present delegate of " +
++        "UNUserNotificationCenter. NotificationCenterManager will not overwrite the value not to break other " +
+         "features of your app.  In return, expo-notifications may not work properly.  To fix this problem either " +
+-        "remove setting of the second delegate, or set the delegate to an instance of EXNotificationCenterDelegate " +
++        "remove setting of the second delegate, or set the delegate to an instance of NotificationCenterManager " +
+         "manually afterwards."
+       )
+       return
      }
      UNUserNotificationCenter.current().delegate = self
    }
@@ -1158,11 +1139,11 @@ index e584c1e..ab3af51 100644
      var handled = false
      for pendingResponse in pendingResponses {
 -      handled = delegate.didReceive(pendingResponse, completionHandler: {})
-+      handled = delegate.didReceiveResponse(pendingResponse, completionHandler: {})
++      handled = delegate.didReceiveResponse(pendingResponse, completionHandler: {}) || handled
      }
      if handled {
        pendingResponses.removeAll()
-@@ -103,7 +107,7 @@ public class NotificationCenterManager: NSObject,
+@@ -103,13 +101,10 @@ public class NotificationCenterManager: NSObject,
    ) {
      var handled = false
      for delegate in delegates {
@@ -1170,8 +1151,15 @@ index e584c1e..ab3af51 100644
 +      handled = delegate.willPresent(notification, completionHandler: completionHandler) || handled
      }
      if !handled {
-       // TODO: For now, until all code is converted to Swift,
-@@ -120,7 +124,7 @@ public class NotificationCenterManager: NSObject,
+-      // TODO: For now, until all code is converted to Swift,
+-      // ensure notification is presented even if handlers are not registered
+-      // Later revisit this
+-      completionHandler([.badge, .banner, .sound])
++      completionHandler([])
+     }
+   }
+ 
+@@ -120,7 +115,7 @@ public class NotificationCenterManager: NSObject,
    ) {
      var handled = false
      for delegate in delegates {
@@ -1180,7 +1168,7 @@ index e584c1e..ab3af51 100644
      }
      if !handled {
        pendingResponses.append(response)
-@@ -133,4 +137,15 @@ public class NotificationCenterManager: NSObject,
+@@ -133,4 +128,15 @@ public class NotificationCenterManager: NSObject,
        delegate.openSettings(notification)
      }
    }
@@ -1197,16 +1185,48 @@ index e584c1e..ab3af51 100644
 +  }
  }
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
-index 13206ba..d66d701 100644
+index 13206ba..e300445 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
-@@ -11,6 +11,9 @@ public class NotificationsAppDelegateSubscriber: ExpoAppDelegateSubscriber {
-   public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
+@@ -4,13 +4,27 @@ import Foundation
+ public class NotificationsAppDelegateSubscriber: ExpoAppDelegateSubscriber {
+   let notificationCenterManager = NotificationCenterManager.shared
+ 
+-  public func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
++  public func application(
++    _ application: UIApplication,
++    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
++  ) {
+     notificationCenterManager.didRegister(dataToString(deviceToken))
+   }
+ 
+-  public func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
++  public func application(
++    _ application: UIApplication,
++    didFailToRegisterForRemoteNotificationsWithError error: any Error
++  ) {
      notificationCenterManager.didFailRegistration(error)
    }
 +
-+  public func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
++  public func application(
++    _ application: UIApplication,
++    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
++    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
++  ) {
++  // TODO: implement this when converting Background module
 +  }
  }
  
  private func dataToString(_ data: Data) -> String {
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
+index 245d9ae..436e2ed 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Presenting/PresentationModule.swift
+@@ -76,6 +76,7 @@ public class PresentationModule: Module, NotificationDelegate {
+ 
+   func serializeNotifications(_ notifications: [UNNotification]) -> [[AnyHashable: Any]] {
+     return notifications.map { notification in
++      // TODO: convert serialization to Records
+       return EXNotificationSerializer.serializedNotification(notification)
+     }
+   }
