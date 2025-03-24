@@ -65,10 +65,10 @@ index d3423bf..0000000
 -NS_ASSUME_NONNULL_END
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m
 deleted file mode 100644
-index fc7d0f5..0000000
+index 10c3997..0000000
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.m
 +++ /dev/null
-@@ -1,186 +0,0 @@
+@@ -1,190 +0,0 @@
 -// Copyright 2018-present 650 Industries. All rights reserved.
 -
 -#import <EXNotifications/EXNotificationCenterDelegate.h>
@@ -232,7 +232,11 @@ index fc7d0f5..0000000
 -  [_delegates addPointer:(__bridge void * _Nullable)(delegate)];
 -  if ([delegate respondsToSelector:@selector(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:)]) {
 -    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
--    for (UNNotificationResponse *response in _pendingNotificationResponses) {
+-
+-    NSArray *responsesToProcess = [_pendingNotificationResponses copy];
+-    [_pendingNotificationResponses removeAllObjects];
+-
+-    for (UNNotificationResponse *response in responsesToProcess) {
 -      [delegate userNotificationCenter:center didReceiveNotificationResponse:response withCompletionHandler:^{
 -        // completion handler doesn't need to do anything
 -      }];
@@ -544,10 +548,10 @@ index 7d46d62..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
 new file mode 100644
-index 0000000..abb6dcc
+index 0000000..1c4d595
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,59 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -571,18 +575,31 @@ index 0000000..abb6dcc
 +    OnStopObserving {
 +      NotificationCenterManager.shared.removeDelegate(self)
 +    }
++
++    AsyncFunction("getLastNotificationResponseAsync") {(promise: Promise) in
++      if let lastResponse: UNNotificationResponse = NotificationCenterManager.shared.lastResponse {
++        promise.resolve(EXNotificationSerializer.serializedNotificationResponse(lastResponse))
++      }
++      promise.resolve(nil)
++    }
++
++    AsyncFunction("clearLastNotificationResponseAsync") {(promise: Promise) in
++      NotificationCenterManager.shared.lastResponse = nil
++      promise.resolve(nil)
++    }
 +  }
 +
-+  public func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
++  public func didReceive(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
 +    completionHandler(.noData)
 +    return true
 +  }
 +
-+  public func didReceiveResponse(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
++  public func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
 +    NotificationCenterManager.shared.lastResponse = response
 +    // TODO: convert serialization to Records
 +    let serializedResponse = EXNotificationSerializer.serializedNotificationResponse(response)
 +    self.sendEvent(onDidReceiveNotificationResponse, serializedResponse as [String: Any])
++    completionHandler()
 +    return true
 +  }
 +
@@ -971,10 +988,10 @@ index 0000000..50fc2be
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift
 new file mode 100644
-index 0000000..7835619
+index 0000000..f2fb57d
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,83 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1040,12 +1057,10 @@ index 0000000..7835619
 +  func presentationOptions(_ behavior: [String: Any]) -> UNNotificationPresentationOptions {
 +    var options: UNNotificationPresentationOptions = []
 +
-+    /*
-+    (Alert option was deprecated in iOS 14)
++    // (Alert option was deprecated in iOS 14)
 +    if let shouldShowAlert = behavior[shouldShowAlertKey] as? Bool, shouldShowAlert {
 +      options.insert(.alert)
 +    }
-+     */
 +
 +    if let shouldPlaySound = behavior[shouldPlaySoundKey] as? Bool, shouldPlaySound {
 +      options.insert(.sound)
@@ -1061,10 +1076,10 @@ index 0000000..7835619
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
-index e584c1e..479877b 100644
+index e584c1e..b857f03 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
-@@ -2,13 +2,15 @@
+@@ -2,6 +2,7 @@
  
  import ExpoModulesCore
  import Foundation
@@ -1072,27 +1087,24 @@ index e584c1e..479877b 100644
  
  /**
   Protocol that NotificationCenterManager delegates may implement
-  */
+@@ -9,6 +10,7 @@ import Foundation
  public protocol NotificationDelegate: AnyObject {
    func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool
--  func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool
-+  func didReceiveResponse(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool
-+  func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool
+   func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool
++  func didReceive(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool
    func openSettings(_ notification: UNNotification?)
    func didRegister(_ deviceToken: String)
    func didFailRegistration(_ error: Error)
-@@ -18,7 +20,10 @@ public extension NotificationDelegate {
-   func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool {
+@@ -21,6 +23,9 @@ public extension NotificationDelegate {
+   func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
      return false
    }
--  func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
-+  func didReceiveResponse(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
++  func didReceive(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
 +    return false
 +  }
-+  func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
-     return false
-   }
    func openSettings(_ notification: UNNotification?) {}
+   func didRegister(_ deviceToken: String) {}
+   func didFailRegistration(_ error: Error) {}
 @@ -30,44 +35,37 @@ public extension NotificationDelegate {
   Singleton that sets itself as the UserNotificationCenter delegate,
   and calls its own delegates in response to notification center calls.
@@ -1139,7 +1151,7 @@ index e584c1e..479877b 100644
      var handled = false
      for pendingResponse in pendingResponses {
 -      handled = delegate.didReceive(pendingResponse, completionHandler: {})
-+      handled = delegate.didReceiveResponse(pendingResponse, completionHandler: {}) || handled
++      handled = delegate.didReceive(pendingResponse, completionHandler: {}) || handled
      }
      if handled {
        pendingResponses.removeAll()
@@ -1164,7 +1176,7 @@ index e584c1e..479877b 100644
      var handled = false
      for delegate in delegates {
 -      handled = handled || delegate.didReceive(response, completionHandler: completionHandler)
-+      handled = delegate.didReceiveResponse(response, completionHandler: completionHandler) || handled
++      handled = delegate.didReceive(response, completionHandler: completionHandler) || handled
      }
      if !handled {
        pendingResponses.append(response)
@@ -1177,7 +1189,7 @@ index e584c1e..479877b 100644
 +  public func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
 +    var handled = false
 +    for delegate in delegates {
-+      handled = delegate.didReceiveNotification(notification, completionHandler: completionHandler) || handled
++      handled = delegate.didReceive(notification, completionHandler: completionHandler) || handled
 +    }
 +    if !handled {
 +      completionHandler(.noData)
