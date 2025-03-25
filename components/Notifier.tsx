@@ -725,7 +725,7 @@ const schedulePushNotificationWithNullTrigger: () => Promise<string> =
       return await scheduleNotificationAsync({
         content: {
           title: "You've got mail! 📬",
-          body: `Yearly notification scheduled ${date.toLocaleString()}`,
+          body: `Null trigger notification scheduled ${date.toLocaleString()}`,
           data: { data: 'goes here', test: { test1: 'more data' } },
         },
         trigger: null,
