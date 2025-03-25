@@ -1,9 +1,12 @@
 diff --git a/node_modules/expo-notifications/expo-module.config.json b/node_modules/expo-notifications/expo-module.config.json
-index a335999..688c0f0 100644
+index a335999..faf4728 100644
 --- a/node_modules/expo-notifications/expo-module.config.json
 +++ b/node_modules/expo-notifications/expo-module.config.json
-@@ -4,6 +4,8 @@
+@@ -2,8 +2,11 @@
+   "platforms": ["apple", "android"],
+   "apple": {
      "modules": [
++      "BackgroundModule",
        "BadgeModule",
        "CategoriesModule",
 +      "HandlerModule",
@@ -11,18 +14,278 @@ index a335999..688c0f0 100644
        "PresentationModule",
        "PushTokenModule",
        "ServerRegistrationModule",
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/BackgroundModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/BackgroundModule.swift
+new file mode 100644
+index 0000000..642d003
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/BackgroundModule.swift
+@@ -0,0 +1,46 @@
++//  Copyright © 2025 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++import UIKit
++import MachO
++
++public class BackgroundModule: Module {
++  var taskManager: EXTaskManagerInterface?
++
++  public func definition() -> ModuleDefinition {
++    Name("ExpoBackgroundNotificationTasksModule")
++
++    OnCreate {
++      taskManager = appContext?.legacyModule(implementing: EXTaskManagerInterface.self)
++    }
++
++    AsyncFunction("registerTaskAsync") {(name: String, promise: Promise) in
++      guard let taskManager else {
++        promise.reject(
++          "E_BACKGROUND_REMOTE_NOTIFICATIONS_DISABLED",
++          "TaskManager not found. Are you sure that Expo modules are properly linked?"
++        )
++        return
++      }
++
++      if !taskManager.hasBackgroundModeEnabled("remote-notification") {
++        promise.reject(
++          "E_BACKGROUND_REMOTE_NOTIFICATIONS_DISABLED",
++          "Background remote notifications have not been configured." +
++          "To enable it, add `remote-notification` to `UIBackgroundModes` " +
++          "in the application's Info.plist file."
++        )
++        return
++      }
++
++      taskManager.registerTask(withName: name, consumer: NotificationsBackgroundTaskConsumer.self, options: [:])
++
++      promise.resolve(nil)
++    }
++
++    AsyncFunction("unregisterTaskAsync") {(name: String, promise: Promise) in
++      taskManager?.unregisterTask(withName: name, consumerClass: NotificationsBackgroundTaskConsumer.self)
++      promise.resolve(nil)
++    }
++  }
++}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
-index d68c4b8..ed48fec 100644
+deleted file mode 100644
+index d68c4b8..0000000
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
-+++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.h
-@@ -2,7 +2,6 @@
- 
- #import <ExpoModulesCore/EXExportedModule.h>
- #import <ExpoModulesCore/EXModuleRegistryConsumer.h>
++++ /dev/null
+@@ -1,16 +0,0 @@
+-// Copyright 2021-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXExportedModule.h>
+-#import <ExpoModulesCore/EXModuleRegistryConsumer.h>
 -#import <EXNotifications/EXNotificationsDelegate.h>
- 
- typedef NS_ENUM(NSUInteger, EXBackgroundNotificationResult) {
-   EXBackgroundNotificationResultNoData = 1,
+-
+-typedef NS_ENUM(NSUInteger, EXBackgroundNotificationResult) {
+-  EXBackgroundNotificationResultNoData = 1,
+-  EXBackgroundNotificationResultNewData = 2,
+-  EXBackgroundNotificationResultFailed = 3,
+-};
+-
+-@interface EXBackgroundNotificationTasksModule : EXExportedModule <EXModuleRegistryConsumer>
+-
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m
+deleted file mode 100644
+index 967e528..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundNotificationTasksModule.m
++++ /dev/null
+@@ -1,62 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXBackgroundNotificationTasksModule.h>
+-#import <EXNotifications/EXBackgroundRemoteNotificationConsumer.h>
+-#import <ExpoModulesCore/EXTaskManagerInterface.h>
+-
+-@interface EXBackgroundNotificationTasksModule ()
+-
+-@property (nonatomic, weak) id<EXTaskManagerInterface> taskManager;
+-
+-@end
+-
+-@implementation EXBackgroundNotificationTasksModule
+-
+-EX_EXPORT_MODULE(ExpoBackgroundNotificationTasksModule);
+-
+-# pragma mark - EXModuleRegistryConsumer
+-
+-- (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry
+-{
+-  _taskManager = [moduleRegistry getModuleImplementingProtocol:@protocol(EXTaskManagerInterface)];
+-}
+-# pragma mark - Exported methods
+-
+-EX_EXPORT_METHOD_AS(registerTaskAsync,
+-                    registerTaskWithName:(nonnull NSString *)taskName
+-                    resolve:(EXPromiseResolveBlock)resolve
+-                    reject:(EXPromiseRejectBlock)reject)
+-{
+-  if (![_taskManager hasBackgroundModeEnabled:@"remote-notification"]) {
+-    return reject(
+-                  @"E_BACKGROUND_REMOTE_NOTIFICATIONS_DISABLED",
+-                  @"Background remote notifications have not been configured. To enable it, add `remote-notification` to `UIBackgroundModes` in the application's Info.plist file.",
+-                  nil
+-                  );
+-  }
+-
+-  @try {
+-    [_taskManager registerTaskWithName:taskName
+-                              consumer:EXBackgroundRemoteNotificationConsumer.class
+-                               options:@{}];
+-  }
+-  @catch (NSException *e) {
+-    return reject(e.name, e.reason, nil);
+-  }
+-  resolve(nil);
+-}
+-
+-EX_EXPORT_METHOD_AS(unregisterTaskAsync,
+-                    unregisterTaskWithName:(nonnull NSString *)taskName
+-                    resolve:(EXPromiseResolveBlock)resolve
+-                    reject:(EXPromiseRejectBlock)reject)
+-{
+-  @try {
+-    [_taskManager unregisterTaskWithName:taskName consumerClass:[EXBackgroundRemoteNotificationConsumer class]];
+-  } @catch (NSException *e) {
+-    return reject(e.name, e.reason, nil);
+-  }
+-  resolve(nil);
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundRemoteNotificationConsumer.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundRemoteNotificationConsumer.h
+deleted file mode 100644
+index cab7d73..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundRemoteNotificationConsumer.h
++++ /dev/null
+@@ -1,14 +0,0 @@
+-// Copyright 2021-present 650 Industries. All rights reserved.
+-
+-#import <Foundation/Foundation.h>
+-#import <ExpoModulesCore/EXTaskConsumerInterface.h>
+-
+-NS_ASSUME_NONNULL_BEGIN
+-
+-@interface EXBackgroundRemoteNotificationConsumer : NSObject <EXTaskConsumerInterface>
+-
+-@property (nonatomic, strong) id<EXTaskInterface> task;
+-
+-@end
+-
+-NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundRemoteNotificationConsumer.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundRemoteNotificationConsumer.m
+deleted file mode 100644
+index 1318c8a..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/EXBackgroundRemoteNotificationConsumer.m
++++ /dev/null
+@@ -1,51 +0,0 @@
+-// Copyright 2021-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXBackgroundNotificationTasksModule.h>
+-#import <EXNotifications/EXBackgroundRemoteNotificationConsumer.h>
+-#import <ExpoModulesCore/EXTaskInterface.h>
+-
+-@implementation EXBackgroundRemoteNotificationConsumer
+-
+-+ (BOOL)supportsLaunchReason:(EXTaskLaunchReason)launchReason
+-{
+-  return launchReason == EXTaskLaunchReasonRemoteNotification;
+-}
+-
+-- (NSString *)taskType
+-{
+-  return @"remote-notification";
+-}
+-
+-// Associating task to the consumer.
+-- (void)didRegisterTask:(id<EXTaskInterface>)task
+-{
+-  _task = task;
+-}
+-
+-// Method that is being called when the JS app just finished launching,
+-// after the native app was launched with the launch reason supported by the consumer.
+-// For background notifications, `application:didReceiveRemoteNotification:fetchCompletionHandler:` is the entry point of this method,
+-// so the task can be executed immediately here
+-- (void)didBecomeReadyToExecuteWithData:(NSDictionary *)data
+-{
+-  [_task executeWithData:data withError:nil];
+-}
+-
+-// Translate result received from JS to another (native) type that is then used for example as an argument in completion callbacks.
+-- (NSUInteger)normalizeTaskResult:(id)result
+-{
+-  if (!result || result == [NSNull null]) {
+-    return UIBackgroundFetchResultNoData;
+-  }
+-  switch ([result unsignedIntegerValue]) {
+-    case EXBackgroundNotificationResultNewData:
+-      return UIBackgroundFetchResultNewData;
+-    case EXBackgroundNotificationResultFailed:
+-      return UIBackgroundFetchResultFailed;
+-    case EXBackgroundNotificationResultNoData:
+-    default:
+-      return UIBackgroundFetchResultNoData;
+-  }
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/NotificationsBackgroundTaskConsumer.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/NotificationsBackgroundTaskConsumer.swift
+new file mode 100644
+index 0000000..c6cc6ce
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/NotificationsBackgroundTaskConsumer.swift
+@@ -0,0 +1,47 @@
++// Copyright 2024-present 650 Industries. All rights reserved.
++import ExpoModulesCore
++
++class NotificationsBackgroundTaskConsumer: NSObject, EXTaskConsumerInterface {
++  var task: EXTaskInterface?
++
++  static func supportsLaunchReason(_ launchReason: EXTaskLaunchReason) -> Bool {
++    return launchReason == EXTaskLaunchReasonRemoteNotification
++  }
++
++  func taskType() -> String {
++    return "remote-notification"
++  }
++
++  func normalizeTaskResult(_ result: Any?) -> UInt {
++    guard let result = result as? Int else {
++      return UIBackgroundFetchResult.noData.rawValue
++    }
++
++    switch result {
++    case BackgroundNotificationResult.newData.rawValue:
++      return UIBackgroundFetchResult.newData.rawValue
++    case BackgroundNotificationResult.failed.rawValue:
++      return UIBackgroundFetchResult.failed.rawValue
++    default:
++      return UIBackgroundFetchResult.noData.rawValue
++    }
++  }
++
++  func didBecomeReadyToExecute(withData data: [AnyHashable: Any]?) {
++    self.task?.execute(withData: data, withError: nil)
++  }
++
++  func didRegisterTask(_ task: EXTaskInterface) {
++    self.task = task
++  }
++
++  func didUnregister() {
++    self.task = nil
++  }
++}
++
++enum BackgroundNotificationResult: Int, Enumerable {
++  case noData = 1
++  case newData = 2
++  case failed = 3
++}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationCenterDelegate.h
 deleted file mode 100644
 index d3423bf..0000000
@@ -548,7 +811,7 @@ index 7d46d62..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
 new file mode 100644
-index 0000000..1c4d595
+index 0000000..6ea5b52
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Emitter/EmitterModule.swift
 @@ -0,0 +1,59 @@
@@ -589,7 +852,7 @@ index 0000000..1c4d595
 +    }
 +  }
 +
-+  public func didReceive(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
++  public func didReceive(_ userInfo: [AnyHashable: Any], completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
 +    completionHandler(.noData)
 +    return true
 +  }
@@ -1077,7 +1340,7 @@ index 0000000..ae48e10
 +  }
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
-index e584c1e..b857f03 100644
+index e584c1e..0594653 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationCenterManager.swift
 @@ -2,6 +2,7 @@
@@ -1092,7 +1355,7 @@ index e584c1e..b857f03 100644
  public protocol NotificationDelegate: AnyObject {
    func willPresent(_ notification: UNNotification, completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) -> Bool
    func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool
-+  func didReceive(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool
++  func didReceive(_ userInfo: [AnyHashable: Any], completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool
    func openSettings(_ notification: UNNotification?)
    func didRegister(_ deviceToken: String)
    func didFailRegistration(_ error: Error)
@@ -1100,7 +1363,7 @@ index e584c1e..b857f03 100644
    func didReceive(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) -> Bool {
      return false
    }
-+  func didReceive(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
++  func didReceive(_ userInfo: [AnyHashable: Any], completionHandler: @escaping (UIBackgroundFetchResult) -> Void) -> Bool {
 +    return false
 +  }
    func openSettings(_ notification: UNNotification?) {}
@@ -1187,10 +1450,10 @@ index e584c1e..b857f03 100644
    }
 +
 +  // MARK: - Called from NotificationsAppDelegateSubscriber
-+  public func didReceiveNotification(_ notification: UNNotification, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
++  public func didReceiveNotification(_ userInfo: [AnyHashable: Any], completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
 +    var handled = false
 +    for delegate in delegates {
-+      handled = delegate.didReceive(notification, completionHandler: completionHandler) || handled
++      handled = delegate.didReceive(userInfo, completionHandler: completionHandler) || handled
 +    }
 +    if !handled {
 +      completionHandler(.noData)
@@ -1198,7 +1461,7 @@ index e584c1e..b857f03 100644
 +  }
  }
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
-index 13206ba..e300445 100644
+index 13206ba..d79b3bf 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/NotificationsAppDelegateSubscriber.swift
 @@ -4,13 +4,27 @@ import Foundation
@@ -1226,7 +1489,7 @@ index 13206ba..e300445 100644
 +    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
 +    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
 +  ) {
-+  // TODO: implement this when converting Background module
++    notificationCenterManager.didReceive(userInfo, completionHandler: completionHandler)
 +  }
  }
  
