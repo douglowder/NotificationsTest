@@ -915,7 +915,7 @@ index 25fcd67..0000000
 -@end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
 new file mode 100644
-index 0000000..50fc2be
+index 0000000..440eabb
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/HandlerModule.swift
 @@ -0,0 +1,67 @@
@@ -944,7 +944,7 @@ index 0000000..50fc2be
 +      NotificationCenterManager.shared.removeDelegate(self)
 +    }
 +
-+    AsyncFunction("handleNotificationAsync") { (identifier: String, behavior: [String: Any], promise: Promise) in
++    AsyncFunction("handleNotificationAsync") { (identifier: String, behavior: [String: Bool], promise: Promise) in
 +      guard let task = tasksMap[identifier] else {
 +        promise.reject("ERR_NOTIFICATION_HANDLED", "Failed to handle notification \(identifier) because it has already been handled")
 +        return
@@ -988,10 +988,10 @@ index 0000000..50fc2be
 +}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift
 new file mode 100644
-index 0000000..f2fb57d
+index 0000000..ae48e10
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Handler/SingleNotificationHandlerTask.swift
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,84 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1038,9 +1038,10 @@ index 0000000..f2fb57d
 +    finish()
 +  }
 +
-+  public func handleResponse(_ behavior: [String: Any]) -> Bool {
++  public func handleResponse(_ behavior: [String: Bool]) -> Bool {
 +    if let completionHandler = completionHandler {
-+      completionHandler(presentationOptions(behavior))
++      let options = presentationOptions(behavior)
++      completionHandler(options)
 +      finish()
 +      return true
 +    }
