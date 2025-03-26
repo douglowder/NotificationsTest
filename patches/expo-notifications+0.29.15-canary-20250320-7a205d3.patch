@@ -16,10 +16,10 @@ index a335999..faf4728 100644
        "ServerRegistrationModule",
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/BackgroundModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/BackgroundModule.swift
 new file mode 100644
-index 0000000..642d003
+index 0000000..f55c073
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/BackgroundModule.swift
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,47 @@
 +//  Copyright © 2025 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -48,9 +48,10 @@ index 0000000..642d003
 +      if !taskManager.hasBackgroundModeEnabled("remote-notification") {
 +        promise.reject(
 +          "E_BACKGROUND_REMOTE_NOTIFICATIONS_DISABLED",
-+          "Background remote notifications have not been configured." +
-+          "To enable it, add `remote-notification` to `UIBackgroundModes` " +
-+          "in the application's Info.plist file."
++          "Background remote notifications have not been configured. " +
++          "To enable it, set the `enableBackgroundRemoteNotifications` parameter " +
++          "in the expo-notifications config plugin, or add `remote-notification` to " +
++          "`UIBackgroundModes` in the application's Info.plist file."
 +        )
 +        return
 +      }
@@ -542,7 +543,7 @@ index 14e35d3..12a72cb 100644
  @end
  
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationSerializer.m b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationSerializer.m
-index 1c5bdd0..5f6d83a 100644
+index 1c5bdd0..2372751 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationSerializer.m
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/EXNotificationSerializer.m
 @@ -9,7 +9,7 @@ static NSString * const EXNotificationResponseDefaultActionIdentifier = @"expo.m
@@ -563,7 +564,7 @@ index 1c5bdd0..5f6d83a 100644
  {
    NSMutableDictionary *serializedNotification = [NSMutableDictionary dictionary];
    serializedNotification[@"request"] = [self serializedNotificationRequest:notification.request];
-@@ -33,7 +33,7 @@ static NSString * const EXNotificationResponseDefaultActionIdentifier = @"expo.m
+@@ -33,16 +33,16 @@ static NSString * const EXNotificationResponseDefaultActionIdentifier = @"expo.m
    return serializedNotification;
  }
  
@@ -572,7 +573,9 @@ index 1c5bdd0..5f6d83a 100644
  {
    NSMutableDictionary *serializedRequest = [NSMutableDictionary dictionary];
    serializedRequest[@"identifier"] = request.identifier;
-@@ -42,7 +42,7 @@ static NSString * const EXNotificationResponseDefaultActionIdentifier = @"expo.m
+   serializedRequest[@"content"] = [self serializedNotificationContent:request];
+-  serializedRequest[@"trigger"] = [self serializedNotificationTrigger:request];
++  serializedRequest[@"trigger"] = request.trigger ? [self serializedNotificationTrigger:request] : [NSNull null];
    return serializedRequest;
  }
  
