@@ -555,7 +555,14 @@ async function registerForPushNotificationsAsync() {
     const { status: existingStatus } = await getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
-      const result = await requestPermissionsAsync();
+      const result = await requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowCriticalAlerts: true,
+          allowDisplayInCarPlay: true,
+          allowBadge: true,
+        },
+      });
       const { status } = result;
       finalStatus = status;
       console.log(
