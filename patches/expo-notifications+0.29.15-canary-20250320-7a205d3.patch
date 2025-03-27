@@ -1510,6 +1510,51 @@ index 245d9ae..436e2ed 100644
        return EXNotificationSerializer.serializedNotification(notification)
      }
    }
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Records.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Records.swift
+index 987ca82..ab4475a 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Records.swift
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Records.swift
+@@ -514,3 +514,40 @@ struct NotificationRequestContentRecord: Record {
+     return content
+   }
+ }
++
++// Notification permissions record
++
++struct NotificationPermissionRecord: Record {
++  @Field
++  var allowAlert: Bool?
++  @Field
++  var allowBadge: Bool?
++  @Field
++  var allowSound: Bool?
++  @Field
++  var allowDisplayInCarPlay: Bool?
++  @Field
++  var allowCriticalAlerts: Bool?
++  @Field
++  var provideAppNotificationSettings: Bool?
++  @Field
++  var allowProvisional: Bool?
++
++  func numberOfOptionsRequested() -> Int {
++    return self.toDictionary(appContext: nil)
++      .filter { $1 as? Bool ?? false == true }
++      .count
++  }
++
++  func authorizationOptionValue() -> UNAuthorizationOptions {
++    var options: UNAuthorizationOptions = []
++    if self.allowAlert ?? false { options.insert(.alert) }
++    if self.allowBadge ?? false { options.insert(.badge) }
++    if self.allowSound ?? false { options.insert(.sound) }
++    if self.allowDisplayInCarPlay ?? false { options.insert(.carPlay) }
++    if self.allowCriticalAlerts ?? false { options.insert(.criticalAlert) }
++    if self.provideAppNotificationSettings ?? false { options.insert(.providesAppNotificationSettings) }
++    if self.allowProvisional ?? false { options.insert(.provisional) }
++    return options
++  }
++}
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXLegacyRemoteNotificationPermissionRequester.h b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXLegacyRemoteNotificationPermissionRequester.h
 deleted file mode 100644
 index 36f26e2..0000000
@@ -1866,11 +1911,36 @@ index 70937d3..0000000
 -}
 -
 -@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.h b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.h
+index 5e3dd8b..67ed3e2 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.h
++++ b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.h
+@@ -1,15 +1,14 @@
+ // Copyright 2019-present 650 Industries. All rights reserved.
+ 
+ #import <ExpoModulesCore/EXPermissionsInterface.h>
++#import <UserNotifications/UserNotifications.h>
+ 
+ @interface EXUserFacingNotificationsPermissionsRequester : NSObject <EXPermissionsRequester>
+ 
+-- (instancetype)initWithMethodQueue:(dispatch_queue_t)methodQueue;
++@property (nonatomic, assign) UNAuthorizationOptions authorizationOptions;
+ 
+-- (void)requestPermissions:(NSDictionary *)permissions
+-              withResolver:(EXPromiseResolveBlock)resolve
+-                  rejecter:(EXPromiseRejectBlock)reject;
+-
+-+ (void)setRequestedPermissions:(NSDictionary *)permissions;
++- (void)requestAuthorizationOptions:(UNAuthorizationOptions)options
++                       withResolver:(EXPromiseResolveBlock)resolve
++                           rejecter:(EXPromiseRejectBlock)reject;
+ 
+ @end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.m b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.m
-index 9919f98..1045608 100644
+index 9919f98..694bd5b 100644
 --- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.m
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.m
-@@ -6,7 +6,7 @@
+@@ -6,23 +6,22 @@
  
  @interface EXUserFacingNotificationsPermissionsRequester ()
  
@@ -1879,7 +1949,12 @@ index 9919f98..1045608 100644
  
  @end
  
-@@ -19,10 +19,10 @@ static NSDictionary *_requestedPermissions;
+ @implementation EXUserFacingNotificationsPermissionsRequester
+ 
+-static NSDictionary *_requestedPermissions;
+-
+ + (NSString *)permissionType
+ {
    return @"userFacingNotifications";
  }
  
@@ -1889,62 +1964,69 @@ index 9919f98..1045608 100644
    if (self = [super init]) {
 -    _methodQueue = methodQueue;
 +    self.methodQueue = dispatch_queue_create("EXUserFacingNotificationsPermissionRequester", DISPATCH_QUEUE_SERIAL);
++    self.authorizationOptions = UNAuthorizationOptionNone;
    }
    return self;
  }
-@@ -83,25 +83,39 @@ static NSDictionary *_requestedPermissions;
- - (void)requestPermissions:(NSDictionary *)permissions withResolver:(EXPromiseResolveBlock)resolve rejecter:(EXPromiseRejectBlock)reject
+@@ -70,41 +69,7 @@ static NSDictionary *_requestedPermissions;
+ 
+ - (void)requestPermissionsWithResolver:(EXPromiseResolveBlock)resolve rejecter:(EXPromiseRejectBlock)reject
  {
-   UNAuthorizationOptions options = UNAuthorizationOptionNone;
+-  if (!_requestedPermissions || [_requestedPermissions count] == 0) {
+-    _requestedPermissions = @{
+-                              @"allowAlert": @(YES),
+-                              @"allowBadge": @(YES),
+-                              @"allowSound": @(YES)
+-                            };
+-  }
+-  [self requestPermissions:_requestedPermissions withResolver:resolve rejecter:reject];
+-}
+-
+-- (void)requestPermissions:(NSDictionary *)permissions withResolver:(EXPromiseResolveBlock)resolve rejecter:(EXPromiseRejectBlock)reject
+-{
+-  UNAuthorizationOptions options = UNAuthorizationOptionNone;
 -  if ([permissions[@"allowAlert"] boolValue]) {
-+  if ([permissions.allKeys containsObject:@"allowAlert"] &&
-+      permissions[@"allowAlert"] != [NSNull null] &&
-+      [permissions[@"allowAlert"] boolValue]) {
-     options |= UNAuthorizationOptionAlert;
-   }
+-    options |= UNAuthorizationOptionAlert;
+-  }
 -  if ([permissions[@"allowBadge"] boolValue]) {
-+  if ([permissions.allKeys containsObject:@"allowBadge"] &&
-+      permissions[@"allowBadge"] != [NSNull null] &&
-+      [permissions[@"allowBadge"] boolValue]) {
-     options |= UNAuthorizationOptionBadge;
-   }
+-    options |= UNAuthorizationOptionBadge;
+-  }
 -  if ([permissions[@"allowSound"] boolValue]) {
-+  if ([permissions.allKeys containsObject:@"allowSound"] &&
-+      permissions[@"allowSound"] != [NSNull null] &&
-+      [permissions[@"allowSound"] boolValue]) {
-     options |= UNAuthorizationOptionSound;
-   }
+-    options |= UNAuthorizationOptionSound;
+-  }
 -  if ([permissions[@"allowDisplayInCarPlay"] boolValue]) {
-+  if ([permissions.allKeys containsObject:@"allowDisplayInCarPlay"] &&
-+      permissions[@"allowDisplayInCarPlay"] != [NSNull null] &&
-+      [permissions[@"allowDisplayInCarPlay"] boolValue]) {
-     options |= UNAuthorizationOptionCarPlay;
-   }
+-    options |= UNAuthorizationOptionCarPlay;
+-  }
 -  if ([permissions[@"allowCriticalAlerts"] boolValue]) {
-+  if ([permissions.allKeys containsObject:@"allowCriticalAlerts"] &&
-+      permissions[@"allowCriticalAlerts"] != [NSNull null] &&
-+      [permissions[@"allowCriticalAlerts"] boolValue]) {
-       options |= UNAuthorizationOptionCriticalAlert;
-   }
+-      options |= UNAuthorizationOptionCriticalAlert;
+-  }
 -  if ([permissions[@"provideAppNotificationSettings"] boolValue]) {
-+  if ([permissions.allKeys containsObject:@"provideAppNotificationSettings"] &&
-+      permissions[@"provideAppNotificationSettings"] != [NSNull null] &&
-+      [permissions[@"provideAppNotificationSettings"] boolValue]) {
-       options |= UNAuthorizationOptionProvidesAppNotificationSettings;
-   }
+-      options |= UNAuthorizationOptionProvidesAppNotificationSettings;
+-  }
 -  if ([permissions[@"allowProvisional"] boolValue]) {
-+  if ([permissions.allKeys containsObject:@"allowProvisional"] &&
-+      permissions[@"allowProvisional"] != [NSNull null] &&
-+      [permissions[@"allowProvisional"] boolValue]) {
-       options |= UNAuthorizationOptionProvisional;
+-      options |= UNAuthorizationOptionProvisional;
+-  }
+-  [self requestAuthorizationOptions:options withResolver:resolve rejecter:reject];
++  [self requestAuthorizationOptions:self.authorizationOptions withResolver:resolve rejecter:reject];
+ }
+ 
+ - (void)requestAuthorizationOptions:(UNAuthorizationOptions)options withResolver:(EXPromiseResolveBlock)resolve rejecter:(EXPromiseRejectBlock)reject
+@@ -178,9 +143,4 @@ static NSDictionary *_requestedPermissions;
    }
-   [self requestAuthorizationOptions:options withResolver:resolve rejecter:reject];
+ }
+ 
+-+ (void)setRequestedPermissions:(NSDictionary *)permissions
+-{
+-  _requestedPermissions = permissions;
+-}
+-
+ @end
 diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/PermissionsModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Permissions/PermissionsModule.swift
 new file mode 100644
-index 0000000..b93c991
+index 0000000..94d72e2
 --- /dev/null
 +++ b/node_modules/expo-notifications/ios/EXNotifications/Permissions/PermissionsModule.swift
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,48 @@
 +//  Copyright © 2024 650 Industries. All rights reserved.
 +
 +import ExpoModulesCore
@@ -1976,7 +2058,11 @@ index 0000000..b93c991
 +    }
 +
 +    AsyncFunction("requestPermissionsAsync") { (requestedPermissions: NotificationPermissionRecord, promise: Promise) in
-+      EXUserFacingNotificationsPermissionsRequester.setRequestedPermissions(requestedPermissions.toDictionary())
++      let defaultAuthorizationOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
++      requester.authorizationOptions = requestedPermissions.numberOfOptionsRequested() > 0
++        ? requestedPermissions.authorizationOptionValue()
++        : defaultAuthorizationOptions
++
 +      appContext?
 +        .permissions?
 +        .askForPermission(
@@ -1989,41 +2075,3 @@ index 0000000..b93c991
 +
 +}
 +
-+struct NotificationPermissionRecord: Record {
-+  @Field
-+  var allowAlert: Bool?
-+  @Field
-+  var allowBadge: Bool?
-+  @Field
-+  var allowSound: Bool?
-+  @Field
-+  var allowDisplayInCarPlay: Bool?
-+  @Field
-+  var allowCriticalAlerts: Bool?
-+  @Field
-+  var provideAppNotificationSettings: Bool?
-+  @Field
-+  var allowProvisional: Bool?
-+
-+  func count() -> Int {
-+    return (self.allowAlert != nil ? 1 : 0) +
-+    (self.allowBadge != nil ? 1 : 0) +
-+    (self.allowSound != nil ? 1 : 0) +
-+    (self.allowDisplayInCarPlay != nil ? 1 : 0) +
-+    (self.allowCriticalAlerts != nil ? 1 : 0) +
-+    (self.provideAppNotificationSettings != nil ? 1 : 0) +
-+    (self.allowProvisional != nil ? 1 : 0)
-+  }
-+
-+  func authorizationOptionValue() -> UNAuthorizationOptions {
-+    var options: UNAuthorizationOptions = []
-+    if self.allowAlert ?? false { options.insert(.alert) }
-+    if self.allowBadge ?? false { options.insert(.badge) }
-+    if self.allowSound ?? false { options.insert(.sound) }
-+    if self.allowDisplayInCarPlay ?? false { options.insert(.carPlay) }
-+    if self.allowCriticalAlerts ?? false { options.insert(.criticalAlert) }
-+    if self.provideAppNotificationSettings ?? false { options.insert(.providesAppNotificationSettings) }
-+    if self.allowProvisional ?? false { options.insert(.provisional) }
-+    return options
-+  }
-+}
