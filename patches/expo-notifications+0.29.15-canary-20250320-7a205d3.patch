@@ -1,8 +1,8 @@
 diff --git a/node_modules/expo-notifications/expo-module.config.json b/node_modules/expo-notifications/expo-module.config.json
-index a335999..faf4728 100644
+index a335999..742a2c8 100644
 --- a/node_modules/expo-notifications/expo-module.config.json
 +++ b/node_modules/expo-notifications/expo-module.config.json
-@@ -2,8 +2,11 @@
+@@ -2,8 +2,12 @@
    "platforms": ["apple", "android"],
    "apple": {
      "modules": [
@@ -11,6 +11,7 @@ index a335999..faf4728 100644
        "CategoriesModule",
 +      "HandlerModule",
 +      "EmitterModule",
++      "PermissionsModule",
        "PresentationModule",
        "PushTokenModule",
        "ServerRegistrationModule",
@@ -1509,3 +1510,520 @@ index 245d9ae..436e2ed 100644
        return EXNotificationSerializer.serializedNotification(notification)
      }
    }
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXLegacyRemoteNotificationPermissionRequester.h b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXLegacyRemoteNotificationPermissionRequester.h
+deleted file mode 100644
+index 36f26e2..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXLegacyRemoteNotificationPermissionRequester.h
++++ /dev/null
+@@ -1,13 +0,0 @@
+-// Copyright 2016-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXPermissionsInterface.h>
+-#import <EXNotifications/EXRemoteNotificationPermissionSingletonModule.h>
+-
+-// TODO: Remove once we deprecate and remove "notifications" permission type
+-@interface EXLegacyRemoteNotificationPermissionRequester : NSObject <EXPermissionsRequester, EXRemoteNotificationPermissionDelegate>
+-
+-- (instancetype)initWithUserNotificationPermissionRequester:(id<EXPermissionsRequester>)userNotificationPermissionRequester
+-                                        permissionPublisher:(id<EXRemoteNotificationPermissionProgressPublisher>)permissionProgressPublisher
+-                                            withMethodQueue:(dispatch_queue_t)methodQueue;
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXLegacyRemoteNotificationPermissionRequester.m b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXLegacyRemoteNotificationPermissionRequester.m
+deleted file mode 100644
+index 70cf386..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXLegacyRemoteNotificationPermissionRequester.m
++++ /dev/null
+@@ -1,135 +0,0 @@
+-// Copyright 2016-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXLegacyRemoteNotificationPermissionRequester.h>
+-#import <ExpoModulesCore/EXUtilities.h>
+-
+-@interface EXLegacyRemoteNotificationPermissionRequester ()
+-
+-@property (nonatomic, strong) EXPromiseResolveBlock resolve;
+-@property (nonatomic, strong) EXPromiseRejectBlock reject;
+-@property (nonatomic, assign) BOOL remoteNotificationsRegistrationIsPending;
+-@property (nonatomic, weak) id<EXPermissionsRequester> userNotificationPermissionRequester;
+-@property (nonatomic, weak) dispatch_queue_t methodQueue;
+-@property (nonatomic, weak) id<EXRemoteNotificationPermissionProgressPublisher> permissionProgressPublisher;
+-
+-@end
+-
+-@implementation EXLegacyRemoteNotificationPermissionRequester
+-
+-+ (NSString *)permissionType
+-{
+-  return @"notifications";
+-}
+-
+-- (instancetype)initWithUserNotificationPermissionRequester:(id<EXPermissionsRequester>)userNotificationPermissionRequester
+-                                        permissionPublisher:(id<EXRemoteNotificationPermissionProgressPublisher>)permissionProgressPublisher
+-                                            withMethodQueue:(dispatch_queue_t)methodQueue
+-{
+-  if (self = [super init]) {
+-    _remoteNotificationsRegistrationIsPending = NO;
+-    _permissionProgressPublisher = permissionProgressPublisher;
+-    _userNotificationPermissionRequester = userNotificationPermissionRequester;
+-    _methodQueue = methodQueue;
+-  }
+-  return self;
+-}
+-
+-- (NSDictionary *)getPermissions
+-{
+-  __block EXPermissionStatus status;
+-  [EXUtilities performSynchronouslyOnMainThread:^{
+-    status = (UMSharedApplication().isRegisteredForRemoteNotifications) ?
+-    EXPermissionStatusGranted :
+-    EXPermissionStatusUndetermined;
+-  }];
+-  NSMutableDictionary *permissions = [[_userNotificationPermissionRequester getPermissions] mutableCopy];
+-  
+-  [permissions setValuesForKeysWithDictionary:@{
+-                                                @"status": @(status),
+-
+-                                                }];
+-  return permissions;
+-}
+-
+-- (void)requestPermissionsWithResolver:(EXPromiseResolveBlock)resolve rejecter:(EXPromiseRejectBlock)reject
+-{
+-  if (_resolve != nil || _reject != nil) {
+-    reject(@"E_AWAIT_PROMISE", @"Another request for the same permission is already being handled.", nil);
+-    return;
+-  }
+-
+-  _resolve = resolve;
+-  _reject = reject;
+-
+-  BOOL __block isRegisteredForRemoteNotifications = NO;
+-  [EXUtilities performSynchronouslyOnMainThread:^{
+-    isRegisteredForRemoteNotifications = UMSharedApplication().isRegisteredForRemoteNotifications;
+-  }];
+-
+-  if (isRegisteredForRemoteNotifications) {
+-    // resolve immediately if already registered
+-    [self _maybeConsumeResolverWithCurrentPermissions];
+-  } else {
+-    [_permissionProgressPublisher addDelegate:self];
+-     EX_WEAKIFY(self)
+-    [_userNotificationPermissionRequester requestPermissionsWithResolver:^(NSDictionary *permission){
+-      EX_STRONGIFY(self)
+-      EXPermissionStatus localNotificationsStatus = [[permission objectForKey:@"status"] intValue];
+-      // We may assume that `EXLocalNotificationRequester`'s permission request will always finish
+-      // when the user responds to the dialog or has already responded in the past.
+-      // However, `UIApplication.registerForRemoteNotification` results in calling
+-      // `application:didRegisterForRemoteNotificationsWithDeviceToken:` or
+-      // `application:didFailToRegisterForRemoteNotificationsWithError:` on the application delegate
+-      // ONLY when the notifications are enabled in settings (by allowing sound, alerts or app badge).
+-      // So, when the local notifications are disabled, the application delegate's callbacks will not be called instantly.
+-      if (localNotificationsStatus == EXPermissionStatusDenied) {
+-        [self _clearObserver];
+-        [self _maybeConsumeResolverWithCurrentPermissions];
+-      } else {
+-        self.remoteNotificationsRegistrationIsPending = YES;
+-        dispatch_async(dispatch_get_main_queue(), ^{
+-          [UMSharedApplication() registerForRemoteNotifications];
+-        });
+-      }
+-    } rejecter:^(NSString *code, NSString *message, NSError *error){
+-      [self _clearObserver];
+-      if (self.reject) {
+-        self.reject(code, message, error);
+-      }
+-    }];
+-  }
+-}
+-
+-- (void)dealloc
+-{
+-  [self _clearObserver];
+-}
+-
+-- (void)handleDidFinishRegisteringForRemoteNotifications
+-{
+-  [self _clearObserver];
+-  EX_WEAKIFY(self)
+-  dispatch_async(_methodQueue, ^{
+-    EX_STRONGIFY(self)
+-    [self _maybeConsumeResolverWithCurrentPermissions];
+-  });
+-}
+-
+-- (void)_clearObserver
+-{
+-  [_permissionProgressPublisher removeDelegate:self];
+-  _remoteNotificationsRegistrationIsPending = NO;
+-}
+-
+-- (void)_maybeConsumeResolverWithCurrentPermissions
+-{
+-  if (!_remoteNotificationsRegistrationIsPending) {
+-    if (_resolve) {
+-      _resolve([self getPermissions]);
+-      _resolve = nil;
+-      _reject = nil;
+-    }
+-  }
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXNotificationPermissionsModule.h b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXNotificationPermissionsModule.h
+deleted file mode 100644
+index 7692713..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXNotificationPermissionsModule.h
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <ExpoModulesCore/EXExportedModule.h>
+-#import <ExpoModulesCore/EXModuleRegistryConsumer.h>
+-
+-@interface EXNotificationPermissionsModule : EXExportedModule <EXModuleRegistryConsumer>
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXNotificationPermissionsModule.m b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXNotificationPermissionsModule.m
+deleted file mode 100644
+index 684655c..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXNotificationPermissionsModule.m
++++ /dev/null
+@@ -1,67 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXNotificationPermissionsModule.h>
+-
+-#import <ExpoModulesCore/EXPermissionsInterface.h>
+-#import <ExpoModulesCore/EXPermissionsMethodsDelegate.h>
+-
+-#import <EXNotifications/EXLegacyRemoteNotificationPermissionRequester.h>
+-#import <EXNotifications/EXUserFacingNotificationsPermissionsRequester.h>
+-
+-@interface EXNotificationPermissionsModule ()
+-
+-@property (nonatomic, weak) id<EXPermissionsInterface> permissionsManager;
+-@property (nonatomic, strong) EXUserFacingNotificationsPermissionsRequester *requester;
+-@property (nonatomic, strong) EXLegacyRemoteNotificationPermissionRequester *legacyRemoteNotificationsRequester;
+-
+-@end
+-
+-@implementation EXNotificationPermissionsModule
+-
+-EX_EXPORT_MODULE(ExpoNotificationPermissionsModule);
+-
+-- (instancetype)init
+-{
+-  if (self = [super init]) {
+-    _requester = [[EXUserFacingNotificationsPermissionsRequester alloc] initWithMethodQueue:self.methodQueue];
+-  }
+-  return self;
+-}
+-
+-# pragma mark - Exported methods
+-
+-EX_EXPORT_METHOD_AS(getPermissionsAsync,
+-                    getPermissionsAsync:(EXPromiseResolveBlock)resolve
+-                    rejecter:(EXPromiseRejectBlock)reject)
+-{
+-  [EXPermissionsMethodsDelegate getPermissionWithPermissionsManager:_permissionsManager
+-                                                      withRequester:[EXUserFacingNotificationsPermissionsRequester class]
+-                                                            resolve:resolve
+-                                                             reject:reject];
+-}
+-
+-EX_EXPORT_METHOD_AS(requestPermissionsAsync,
+-                    requestPermissionsAsync:(NSDictionary *)requestedPermissions
+-                    requester:(EXPromiseResolveBlock)resolve
+-                    rejecter:(EXPromiseRejectBlock)reject)
+-{
+-  [EXUserFacingNotificationsPermissionsRequester setRequestedPermissions:requestedPermissions];
+-  [EXPermissionsMethodsDelegate askForPermissionWithPermissionsManager:_permissionsManager
+-                                                         withRequester:[EXUserFacingNotificationsPermissionsRequester class]
+-                                                               resolve:resolve
+-                                                                reject:reject];
+-}
+-
+-# pragma mark - EXModuleRegistryConsumer
+-
+-- (void)setModuleRegistry:(EXModuleRegistry *)moduleRegistry {
+-  _permissionsManager = [moduleRegistry getModuleImplementingProtocol:@protocol(EXPermissionsInterface)];
+-  if (!_legacyRemoteNotificationsRequester) {
+-    // TODO: Remove once we deprecate and remove "notifications" permission type
+-    _legacyRemoteNotificationsRequester = [[EXLegacyRemoteNotificationPermissionRequester alloc] initWithUserNotificationPermissionRequester:_requester permissionPublisher:[moduleRegistry getSingletonModuleForName:@"RemoteNotificationPermissionPublisher"] withMethodQueue:self.methodQueue];
+-  }
+-  [EXPermissionsMethodsDelegate registerRequesters:@[_requester, _legacyRemoteNotificationsRequester]
+-                            withPermissionsManager:_permissionsManager];
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXRemoteNotificationPermissionSingletonModule.h b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXRemoteNotificationPermissionSingletonModule.h
+deleted file mode 100644
+index a52e568..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXRemoteNotificationPermissionSingletonModule.h
++++ /dev/null
+@@ -1,29 +0,0 @@
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <Foundation/Foundation.h>
+-#import <UIKit/UIKit.h>
+-#import <ExpoModulesCore/EXSingletonModule.h>
+-
+-NS_ASSUME_NONNULL_BEGIN
+-
+-@protocol EXRemoteNotificationPermissionDelegate
+-
+-- (void)handleDidFinishRegisteringForRemoteNotifications;
+-
+-@end
+-
+-@protocol EXRemoteNotificationPermissionProgressPublisher
+-
+-- (void)addDelegate:(id<EXRemoteNotificationPermissionDelegate>)delegate;
+-- (void)removeDelegate:(id<EXRemoteNotificationPermissionDelegate>)delegate;
+-
+-@end
+-
+-@interface EXRemoteNotificationPermissionSingletonModule : EXSingletonModule <UIApplicationDelegate, EXRemoteNotificationPermissionProgressPublisher>
+-
+-- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)token;
+-- (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error;
+-
+-@end
+-
+-NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXRemoteNotificationPermissionSingletonModule.m b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXRemoteNotificationPermissionSingletonModule.m
+deleted file mode 100644
+index 70937d3..0000000
+--- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXRemoteNotificationPermissionSingletonModule.m
++++ /dev/null
+@@ -1,68 +0,0 @@
+-
+-// Copyright 2018-present 650 Industries. All rights reserved.
+-
+-#import <EXNotifications/EXRemoteNotificationPermissionSingletonModule.h>
+-#import <ExpoModulesCore/EXDefines.h>
+-
+-@interface EXRemoteNotificationPermissionSingletonModule ()
+-
+-@property (nonatomic, strong) NSPointerArray *delegates;
+-
+-@end
+-
+-@implementation EXRemoteNotificationPermissionSingletonModule
+-
+-EX_REGISTER_SINGLETON_MODULE(RemoteNotificationPermissionPublisher);
+-
+-- (instancetype)init
+-{
+-  if (self = [super init]) {
+-    _delegates = [NSPointerArray weakObjectsPointerArray];
+-  }
+-  return self;
+-}
+-
+-# pragma mark - UIApplicationDelegate
+-
+-- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)token
+-{
+-  // Copying the array in case delegates remove themselves while handling the "did finish" event
+-  NSPointerArray *immutableDelegates = [_delegates copy];
+-  for (int i = 0; i < immutableDelegates.count; i++) {
+-    id pointer = [immutableDelegates pointerAtIndex:i];
+-    [pointer handleDidFinishRegisteringForRemoteNotifications];
+-  }
+-}
+-
+-- (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error
+-{
+-  // Copying the array in case delegates remove themselves while handling the "did finish" event
+-  NSPointerArray *immutableDelegates = [_delegates copy];
+-  for (int i = 0; i < immutableDelegates.count; i++) {
+-    id pointer = [_delegates pointerAtIndex:i];
+-    [pointer handleDidFinishRegisteringForRemoteNotifications];
+-  }
+-}
+-
+-# pragma mark - EXNotificationCenterDelegate
+-
+-- (void)addDelegate:(id<EXRemoteNotificationPermissionDelegate>)delegate
+-{
+-  [_delegates addPointer:(__bridge void * _Nullable)(delegate)];
+-}
+-
+-- (void)removeDelegate:(id<EXRemoteNotificationPermissionDelegate>)delegate
+-{
+-  for (int i = 0; i < _delegates.count; i++) {
+-    id pointer = [_delegates pointerAtIndex:i];
+-    if (pointer == (__bridge void * _Nullable)(delegate) || !pointer) {
+-      [_delegates removePointerAtIndex:i];
+-      i--;
+-    }
+-  }
+-  // compact doesn't work, that's why we need the `|| !pointer` above
+-  // http://www.openradar.me/15396578
+-  [_delegates compact];
+-}
+-
+-@end
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.m b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.m
+index 9919f98..1045608 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.m
++++ b/node_modules/expo-notifications/ios/EXNotifications/Permissions/EXUserFacingNotificationsPermissionsRequester.m
+@@ -6,7 +6,7 @@
+ 
+ @interface EXUserFacingNotificationsPermissionsRequester ()
+ 
+-@property (nonatomic, assign) dispatch_queue_t methodQueue;
++@property (nonatomic, strong) dispatch_queue_t methodQueue;
+ 
+ @end
+ 
+@@ -19,10 +19,10 @@ static NSDictionary *_requestedPermissions;
+   return @"userFacingNotifications";
+ }
+ 
+-- (instancetype)initWithMethodQueue:(dispatch_queue_t)methodQueue
++- (instancetype)init
+ {
+   if (self = [super init]) {
+-    _methodQueue = methodQueue;
++    self.methodQueue = dispatch_queue_create("EXUserFacingNotificationsPermissionRequester", DISPATCH_QUEUE_SERIAL);
+   }
+   return self;
+ }
+@@ -83,25 +83,39 @@ static NSDictionary *_requestedPermissions;
+ - (void)requestPermissions:(NSDictionary *)permissions withResolver:(EXPromiseResolveBlock)resolve rejecter:(EXPromiseRejectBlock)reject
+ {
+   UNAuthorizationOptions options = UNAuthorizationOptionNone;
+-  if ([permissions[@"allowAlert"] boolValue]) {
++  if ([permissions.allKeys containsObject:@"allowAlert"] &&
++      permissions[@"allowAlert"] != [NSNull null] &&
++      [permissions[@"allowAlert"] boolValue]) {
+     options |= UNAuthorizationOptionAlert;
+   }
+-  if ([permissions[@"allowBadge"] boolValue]) {
++  if ([permissions.allKeys containsObject:@"allowBadge"] &&
++      permissions[@"allowBadge"] != [NSNull null] &&
++      [permissions[@"allowBadge"] boolValue]) {
+     options |= UNAuthorizationOptionBadge;
+   }
+-  if ([permissions[@"allowSound"] boolValue]) {
++  if ([permissions.allKeys containsObject:@"allowSound"] &&
++      permissions[@"allowSound"] != [NSNull null] &&
++      [permissions[@"allowSound"] boolValue]) {
+     options |= UNAuthorizationOptionSound;
+   }
+-  if ([permissions[@"allowDisplayInCarPlay"] boolValue]) {
++  if ([permissions.allKeys containsObject:@"allowDisplayInCarPlay"] &&
++      permissions[@"allowDisplayInCarPlay"] != [NSNull null] &&
++      [permissions[@"allowDisplayInCarPlay"] boolValue]) {
+     options |= UNAuthorizationOptionCarPlay;
+   }
+-  if ([permissions[@"allowCriticalAlerts"] boolValue]) {
++  if ([permissions.allKeys containsObject:@"allowCriticalAlerts"] &&
++      permissions[@"allowCriticalAlerts"] != [NSNull null] &&
++      [permissions[@"allowCriticalAlerts"] boolValue]) {
+       options |= UNAuthorizationOptionCriticalAlert;
+   }
+-  if ([permissions[@"provideAppNotificationSettings"] boolValue]) {
++  if ([permissions.allKeys containsObject:@"provideAppNotificationSettings"] &&
++      permissions[@"provideAppNotificationSettings"] != [NSNull null] &&
++      [permissions[@"provideAppNotificationSettings"] boolValue]) {
+       options |= UNAuthorizationOptionProvidesAppNotificationSettings;
+   }
+-  if ([permissions[@"allowProvisional"] boolValue]) {
++  if ([permissions.allKeys containsObject:@"allowProvisional"] &&
++      permissions[@"allowProvisional"] != [NSNull null] &&
++      [permissions[@"allowProvisional"] boolValue]) {
+       options |= UNAuthorizationOptionProvisional;
+   }
+   [self requestAuthorizationOptions:options withResolver:resolve rejecter:reject];
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Permissions/PermissionsModule.swift b/node_modules/expo-notifications/ios/EXNotifications/Permissions/PermissionsModule.swift
+new file mode 100644
+index 0000000..b93c991
+--- /dev/null
++++ b/node_modules/expo-notifications/ios/EXNotifications/Permissions/PermissionsModule.swift
+@@ -0,0 +1,82 @@
++//  Copyright © 2024 650 Industries. All rights reserved.
++
++import ExpoModulesCore
++import UIKit
++import MachO
++
++public class PermissionsModule: Module {
++  var permissionsManager: (any EXPermissionsInterface)?
++  var requester: EXUserFacingNotificationsPermissionsRequester =
++    EXUserFacingNotificationsPermissionsRequester()
++
++  public func definition() -> ModuleDefinition {
++    Name("ExpoNotificationPermissionsModule")
++
++    OnCreate {
++      appContext?.permissions?.register([
++        requester
++      ])
++    }
++
++    AsyncFunction("getPermissionsAsync") { (promise: Promise) in
++      appContext?
++        .permissions?
++        .getPermissionUsingRequesterClass(
++          EXUserFacingNotificationsPermissionsRequester.self,
++          resolve: promise.resolver,
++          reject: promise.legacyRejecter
++        )
++    }
++
++    AsyncFunction("requestPermissionsAsync") { (requestedPermissions: NotificationPermissionRecord, promise: Promise) in
++      EXUserFacingNotificationsPermissionsRequester.setRequestedPermissions(requestedPermissions.toDictionary())
++      appContext?
++        .permissions?
++        .askForPermission(
++          usingRequesterClass: EXUserFacingNotificationsPermissionsRequester.self,
++          resolve: promise.resolver,
++          reject: promise.legacyRejecter
++        )
++    }
++  }
++
++}
++
++struct NotificationPermissionRecord: Record {
++  @Field
++  var allowAlert: Bool?
++  @Field
++  var allowBadge: Bool?
++  @Field
++  var allowSound: Bool?
++  @Field
++  var allowDisplayInCarPlay: Bool?
++  @Field
++  var allowCriticalAlerts: Bool?
++  @Field
++  var provideAppNotificationSettings: Bool?
++  @Field
++  var allowProvisional: Bool?
++
++  func count() -> Int {
++    return (self.allowAlert != nil ? 1 : 0) +
++    (self.allowBadge != nil ? 1 : 0) +
++    (self.allowSound != nil ? 1 : 0) +
++    (self.allowDisplayInCarPlay != nil ? 1 : 0) +
++    (self.allowCriticalAlerts != nil ? 1 : 0) +
++    (self.provideAppNotificationSettings != nil ? 1 : 0) +
++    (self.allowProvisional != nil ? 1 : 0)
++  }
++
++  func authorizationOptionValue() -> UNAuthorizationOptions {
++    var options: UNAuthorizationOptions = []
++    if self.allowAlert ?? false { options.insert(.alert) }
++    if self.allowBadge ?? false { options.insert(.badge) }
++    if self.allowSound ?? false { options.insert(.sound) }
++    if self.allowDisplayInCarPlay ?? false { options.insert(.carPlay) }
++    if self.allowCriticalAlerts ?? false { options.insert(.criticalAlert) }
++    if self.provideAppNotificationSettings ?? false { options.insert(.providesAppNotificationSettings) }
++    if self.allowProvisional ?? false { options.insert(.provisional) }
++    return options
++  }
++}
