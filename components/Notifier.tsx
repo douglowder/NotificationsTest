@@ -555,8 +555,12 @@ async function registerForPushNotificationsAsync() {
     const { status: existingStatus } = await getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
-      const { status } = await requestPermissionsAsync();
+      const result = await requestPermissionsAsync();
+      const { status } = result;
       finalStatus = status;
+      console.log(
+        `requestPermissionsAsync() = ${JSON.stringify(result, null, 2)}`,
+      );
     }
     if (finalStatus !== 'granted') {
       alert('Failed to get push token for push notification!');
