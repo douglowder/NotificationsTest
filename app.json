@@ -15,14 +15,8 @@
     },
     "ios": {
       "infoPlist": {
-        "UIBackgroundModes": [
-          "processing",
-          "fetch",
-          "remote-notification",
-          "processing",
-          "fetch",
-          "remote-notification"
-        ]
+        "UIBackgroundModes": ["processing", "fetch", "remote-notification"],
+        "ITSAppUsesNonExemptEncryption": false
       },
       "appleTeamId": "P83ZV6W49Z",
       "supportsTablet": true,
@@ -45,6 +39,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "expo-notifications",
       "expo-build-properties",
       "expo-router",
       "expo-font",
