@@ -33,6 +33,7 @@
     "expo-status-bar": "2.1.1-canary-20250408-7f0ab53",
     "expo-system-ui": "5.0.1-canary-20250408-7f0ab53",
     "expo-task-manager": "13.1.1-canary-20250408-7f0ab53",
+    "expo-updates": "~0.28.2",
     "expo-web-browser": "14.1.1-canary-20250408-7f0ab53",
     "metro": "0.81.3",
     "patch-project": "^0.1.24",

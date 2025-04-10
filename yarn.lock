@@ -861,7 +861,7 @@
     wrap-ansi "^7.0.0"
     ws "^8.12.1"
 
-"@expo/code-signing-certificates@^0.0.5":
+"@expo/code-signing-certificates@0.0.5", "@expo/code-signing-certificates@^0.0.5":
   version "0.0.5"
   resolved "https://registry.yarnpkg.com/@expo/code-signing-certificates/-/code-signing-certificates-0.0.5.tgz#a693ff684fb20c4725dade4b88a6a9f96b02496c"
   integrity sha512-BNhXkY1bblxKZpltzAx98G2Egj9g1Q+JRcvR7E99DOj862FTCX+ZPsAUtPTr7aHxwtrL7+fL3r0JSmM9kBm+Bw==
@@ -982,7 +982,7 @@
     slugify "^1.3.4"
     sucrase "3.35.0"
 
-"@expo/config@~11.0.1":
+"@expo/config@~11.0.0", "@expo/config@~11.0.1":
   version "11.0.1"
   resolved "https://registry.yarnpkg.com/@expo/config/-/config-11.0.1.tgz#ef1f9e6540c2cf86e83ba98e9331ac38d90893e8"
   integrity sha512-CweNLNkGyaQhtqaW2XgdztEvHR7yyxudMpib6KJz0BBD7KAjA2TwFExpCpZhfGPXSg4+ARHe4ItAI0+AEmTjYA==
@@ -2173,6 +2173,11 @@ application-config-path@^0.1.0:
   resolved "https://registry.yarnpkg.com/application-config-path/-/application-config-path-0.1.1.tgz#8b5ac64ff6afdd9bd70ce69f6f64b6998f5f756e"
   integrity sha512-zy9cHePtMP0YhwG+CfHm0bgwdnga2X3gZexpdCwEj//dpb+TKajtiC8REEUJUSq6Ab4f9cgNy2l8ObXzCXFkEw==
 
+arg@4.1.0:
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/arg/-/arg-4.1.0.tgz#583c518199419e0037abb74062c37f8519e575f0"
+  integrity sha512-ZWc51jO3qegGkVh8Hwpv636EkbesNV5ZNQPCtRa+0qytRYPEs9IYT9qITY9buezqUH5uqyzlWLcufrzU2rffdg==
+
 arg@5.0.2, arg@^5.0.2:
   version "5.0.2"
   resolved "https://registry.yarnpkg.com/arg/-/arg-5.0.2.tgz#c81433cc427c92c4dcf4865142dbca6f15acd59c"
@@ -3229,6 +3234,11 @@ expo-device@7.1.1-canary-20250408-7f0ab53:
   dependencies:
     ua-parser-js "^0.7.33"
 
+expo-eas-client@~0.14.0:
+  version "0.14.0"
+  resolved "https://registry.yarnpkg.com/expo-eas-client/-/expo-eas-client-0.14.0.tgz#9f1735ad382785b5c21e627127c8051fbfdacbc9"
+  integrity sha512-G3hi7hb8SgeGf5gExkuxFR2qFWl3wRsFrPNxgzSj+VxM4dT0jWj/r4EPaHJMC+VeT7GEIeV62KF5s2Oi8RPY4g==
+
 expo-file-system@~18.1.1:
   version "18.1.1"
   resolved "https://registry.yarnpkg.com/expo-file-system/-/expo-file-system-18.1.1.tgz#38460897b829c1350511855e65fcaf71e0fc075b"
@@ -3255,6 +3265,11 @@ expo-json-utils@0.15.1-canary-20250408-7f0ab53:
   resolved "https://registry.yarnpkg.com/expo-json-utils/-/expo-json-utils-0.15.1-canary-20250408-7f0ab53.tgz#bb0444d37528dc9a631c542e527aeceb812abaa6"
   integrity sha512-62msixHGo6D0ybqzzHsY5VEyVzsypeeM6TRUiTgqg1KkUoS1OWTZXqPJgOPI5uQvw0Z86wATysKxHUgTcQJMQg==
 
+expo-json-utils@~0.15.0:
+  version "0.15.0"
+  resolved "https://registry.yarnpkg.com/expo-json-utils/-/expo-json-utils-0.15.0.tgz#6723574814b9e6b0a90e4e23662be76123ab6ae9"
+  integrity sha512-duRT6oGl80IDzH2LD2yEFWNwGIC2WkozsB6HF3cDYNoNNdUvFk6uN3YiwsTsqVM/D0z6LEAQ01/SlYvN+Fw0JQ==
+
 expo-keep-awake@~14.1.1:
   version "14.1.1"
   resolved "https://registry.yarnpkg.com/expo-keep-awake/-/expo-keep-awake-14.1.1.tgz#09f408655e7163c214f578cb62b929aab9872df8"
@@ -3275,6 +3290,14 @@ expo-manifests@0.16.1-canary-20250408-7f0ab53:
   dependencies:
     "@expo/config" "11.0.1-canary-20250408-7f0ab53"
     expo-json-utils "0.15.1-canary-20250408-7f0ab53"
+
+expo-manifests@~0.16.0:
+  version "0.16.0"
+  resolved "https://registry.yarnpkg.com/expo-manifests/-/expo-manifests-0.16.0.tgz#752bd90fd3105fe9a2c3aafac20b3a807550257a"
+  integrity sha512-RhhWA4WdDWCVLO6lyQFKsWO7SYIZzXcVBdqqN0bAnFk3HxnkwjPWItu//BcWG3H5F1N3k8yXP4/JsdhjDMujeg==
+  dependencies:
+    "@expo/config" "~11.0.0"
+    expo-json-utils "~0.15.0"
 
 expo-modules-autolinking@2.1.2:
   version "2.1.2"
@@ -3343,6 +3366,11 @@ expo-status-bar@2.1.1-canary-20250408-7f0ab53:
   dependencies:
     react-native-is-edge-to-edge "^1.1.6"
 
+expo-structured-headers@~4.1.0:
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/expo-structured-headers/-/expo-structured-headers-4.1.0.tgz#5475fc3f9559701cc755fd2d50605f8817d42ad0"
+  integrity sha512-2X+aUNzC/qaw7/WyUhrVHNDB0uQ5rE12XA2H/rJXaAiYQSuOeU90ladaN0IJYV9I2XlhYrjXLktLXWbO7zgbag==
+
 expo-system-ui@5.0.1-canary-20250408-7f0ab53:
   version "5.0.1-canary-20250408-7f0ab53"
   resolved "https://registry.yarnpkg.com/expo-system-ui/-/expo-system-ui-5.0.1-canary-20250408-7f0ab53.tgz#cff0acbf7b9ff85ad68585e96817d2a645313c0f"
@@ -3362,6 +3390,30 @@ expo-updates-interface@1.1.1-canary-20250408-7f0ab53:
   version "1.1.1-canary-20250408-7f0ab53"
   resolved "https://registry.yarnpkg.com/expo-updates-interface/-/expo-updates-interface-1.1.1-canary-20250408-7f0ab53.tgz#5638ee5fa46a17edcc960adc204c58e6a524e5ae"
   integrity sha512-K9Td0LSfvpeHXbj+dak21ODGGobrC+t1FLmNws6RHvsTP8Eeyrtmr8kRskClLntD2N6sZcQv8u42llVEAaJdlw==
+
+expo-updates-interface@~1.1.0:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/expo-updates-interface/-/expo-updates-interface-1.1.0.tgz#62497d4647b381da9fdb68868ed180203ae737ef"
+  integrity sha512-DeB+fRe0hUDPZhpJ4X4bFMAItatFBUPjw/TVSbJsaf3Exeami+2qbbJhWkcTMoYHOB73nOIcaYcWXYJnCJXO0w==
+
+expo-updates@~0.28.2:
+  version "0.28.2"
+  resolved "https://registry.yarnpkg.com/expo-updates/-/expo-updates-0.28.2.tgz#7c0318a08049fabd615a0623528a61b43c8440de"
+  integrity sha512-DLiNY8Kld8SNPAUaUxYPRJJqlx1mhBIf9mpuIeGK1axRUVdpoCz1UBFHZXKZRvtRQyu0zPCNiGMAafOKigDScQ==
+  dependencies:
+    "@expo/code-signing-certificates" "0.0.5"
+    "@expo/config" "~11.0.1"
+    "@expo/config-plugins" "~9.1.2"
+    "@expo/spawn-async" "^1.7.2"
+    arg "4.1.0"
+    chalk "^4.1.2"
+    expo-eas-client "~0.14.0"
+    expo-manifests "~0.16.0"
+    expo-structured-headers "~4.1.0"
+    expo-updates-interface "~1.1.0"
+    glob "^10.4.2"
+    ignore "^5.3.1"
+    resolve-from "^5.0.0"
 
 expo-web-browser@14.1.1-canary-20250408-7f0ab53:
   version "14.1.1-canary-20250408-7f0ab53"
@@ -3763,6 +3815,11 @@ ieee754@^1.1.13:
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/ieee754/-/ieee754-1.2.1.tgz#8eb7a10a63fff25d15a57b001586d177d1b0d352"
   integrity sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==
+
+ignore@^5.3.1:
+  version "5.3.2"
+  resolved "https://registry.yarnpkg.com/ignore/-/ignore-5.3.2.tgz#3cd40e729f3643fd87cb04e50bf0eb722bc596f5"
+  integrity sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==
 
 image-size@^1.0.2:
   version "1.1.1"
