@@ -160,6 +160,8 @@ export const Notifier = () => {
 
   const { expoPushToken, devicePushToken } = usePushToken();
 
+  const [categories, setCategories] = useState<string>('');
+
   const retrieveBackgroundData = () => {
     AsyncStorage.getItem(STORAGE_KEY)
       .then((value) => {
@@ -274,6 +276,7 @@ export const Notifier = () => {
         <Text>All scheduled notifications: {scheduledNotificationsText}</Text>
         <Text>All presented notifications: {presentedNotificationsText}</Text>
         <Text>Background task data: {backgroundTaskString}</Text>
+        <Text>Categories: {categories}</Text>
         <Button
           title="presentNotification()"
           onPress={() => presentNotification()}
@@ -429,9 +432,10 @@ export const Notifier = () => {
         <Button
           title="Get categories"
           onPress={() => {
-            getNotificationCategoriesAsync().then((categories) =>
-              console.log(JSON.stringify(categories, null, 2)),
-            );
+            getNotificationCategoriesAsync().then((categories) => {
+              console.log(JSON.stringify(categories, null, 2));
+              setCategories(JSON.stringify(categories, null, 2));
+            });
           }}
         />
       </View>
