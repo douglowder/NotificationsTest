@@ -12,7 +12,6 @@ import {
   getLastNotificationResponseAsync,
   getPermissionsAsync,
   getNotificationChannelsAsync,
-  removeNotificationSubscription,
   requestPermissionsAsync,
   scheduleNotificationAsync,
   setNotificationChannelAsync,
@@ -29,7 +28,6 @@ import {
   NotificationTriggerInput,
   setBadgeCountAsync,
   getBadgeCountAsync,
-  presentNotificationAsync,
   setNotificationCategoryAsync,
   NotificationCategory,
   deleteNotificationCategoryAsync,
@@ -56,14 +54,15 @@ import { router } from 'expo-router';
  * @param routeOnResponses If true, sets up response routing
  */
 export function useNotificationObserverInRootLayout(routeOnResponses: boolean) {
-  const responseListener = useRef<EventSubscription>();
+  const responseListener = useRef<EventSubscription>(undefined);
   usePushToken();
   useEffect(() => {
     let isMounted = true;
 
     setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: false,
         shouldSetBadge: false,
       }),
@@ -153,8 +152,8 @@ export const Notifier = () => {
 
   const [backgroundTaskString, setBackgroundTaskString] = useState<string>('');
 
-  const notificationListener = useRef<EventSubscription>();
-  const responseListener = useRef<EventSubscription>();
+  const notificationListener = useRef<EventSubscription>(undefined);
+  const responseListener = useRef<EventSubscription>(undefined);
 
   const lastResponse = useLastNotificationResponse();
 
@@ -211,10 +210,8 @@ export const Notifier = () => {
 
     return () => {
       console.log(`${Platform.OS} removed listeners`);
-      notificationListener.current &&
-        removeNotificationSubscription(notificationListener.current);
-      responseListener.current &&
-        removeNotificationSubscription(responseListener.current);
+      notificationListener.current && notificationListener.current.remove();
+      responseListener.current && responseListener.current.remove();
     };
   }, []);
 
@@ -277,10 +274,6 @@ export const Notifier = () => {
         <Text>All presented notifications: {presentedNotificationsText}</Text>
         <Text>Background task data: {backgroundTaskString}</Text>
         <Text>Categories: {categories}</Text>
-        <Button
-          title="presentNotification()"
-          onPress={() => presentNotification()}
-        />
         <Button
           title="incrementBadgeCount()"
           onPress={() => incrementBadgeCount()}
@@ -764,18 +757,5 @@ const clearBadgeCount: () => Promise<void> = async () => {
     await setBadgeCountAsync(0);
   } catch (e) {
     console.log(`Badge count error: ${e}`);
-  }
-};
-
-const presentNotification: () => Promise<void> = async () => {
-  const date = new Date();
-  try {
-    await presentNotificationAsync({
-      title: "You've got mail! 📬",
-      body: `Presented a notification: ${date.toLocaleString()}`,
-      data: { data: 'goes here', test: { test1: 'more data' } },
-    });
-  } catch (e) {
-    console.log(`Presentation error: ${e}`);
   }
 };
